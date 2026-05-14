@@ -1,0 +1,15 @@
+# Build output
+build/
+DerivedData/
+*.xcuserdata
+xcuserdata/
+
+# Packaged bundles (regeneratable from scripts/package-mcpb.sh)
+*.mcpb
+bundle/server/
+
+# macOS noise
+.DS_Store
+
+# Clang coverage artifacts
+*.profraw
