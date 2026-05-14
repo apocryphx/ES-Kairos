@@ -1,13 +1,65 @@
 # Kairos
 
-**STDIO MCP server for calendar and contacts collaboration on macOS.**
+**STDIO MCP server for calendar, reminders, and contacts on macOS.**
 
-EventKit + Contacts, native AppKit, Objective-C. Events are identified by
-`title + calendar + start` — no UUIDs in the LLM context. A confirmation
-dialog appears before any deletion.
+EventKit + Contacts, native AppKit, Objective-C. Events and reminders are
+identified by semantic keys (`title + calendar + start`, `title + list + due`) —
+no UUIDs in the LLM context, so summaries stay reliable. A native macOS
+confirmation dialog appears before any deletion.
 
-Modelled on the [ES UITest](../ES UITest) pattern: accessory app, `LSUIElement = YES`,
-GCD queues for stdio framing, AppKit on the main thread.
+---
+
+## Install (end users)
+
+1. Download `ES_Kairos.mcpb` from this repo's root and **double-click it**.
+   Claude Desktop will install it as a connector.
+2. **Quit and reopen Claude Desktop.** On first launch three macOS
+   permission prompts appear in sequence — one each for Calendar,
+   Contacts, and Reminders. Approve all three. (The chained prompts
+   are deliberate; macOS won't show them reliably if asked in parallel.)
+3. Ask Claude things like:
+   - *"What's on my calendar today?"*
+   - *"What reminders are due today?"*
+   - *"Find Mary's phone number"*
+   - *"Add a reminder to call the dentist tomorrow at 2pm"*
+   - *"Move the 3pm meeting on Friday to 4pm"*
+
+Claude reads and writes through the live macOS data stores. Anything
+Kairos creates appears immediately in Calendar.app, Reminders.app, and
+Contacts.app, and vice versa.
+
+### What's safe
+
+Every **deletion** (event or reminder) pops a native dialog asking you to
+confirm before anything happens — Kairos cannot quietly remove your data.
+Updates do not pop a dialog, so Claude's MCP client is expected to
+confirm with you before invoking destructive tools (the tool annotations
+flag this).
+
+### If a permission prompt doesn't appear
+
+macOS TCC sometimes silently drops a permission request if another is in
+flight. If you grant Calendar but Contacts or Reminders never asks:
+
+```sh
+tccutil reset Calendar com.elarity.ES-Kairos
+tccutil reset Contacts com.elarity.ES-Kairos
+tccutil reset Reminders com.elarity.ES-Kairos
+```
+
+Then fully quit Claude Desktop (Cmd-Q) and reopen. All three prompts
+should fire on the next launch. Alternatively, grant access manually in
+**System Settings → Privacy & Security**.
+
+### What gets installed where
+
+- **App bundle:** `~/Library/Application Support/Claude/Claude Extensions/local.mcpb.kolja-wawrowsky.es-kairos/server/ES_Kairos.app/`
+- **Logs:** `~/Library/Logs/Claude/mcp-server-ES Kairos.log`
+- **TCC permissions:** under the bundle ID `com.elarity.ES-Kairos`
+
+To uninstall: in Claude Desktop, **Settings → Connectors → ES Kairos →
+Remove**. macOS will keep the TCC entries; reset them with `tccutil` if
+you want a clean slate.
 
 ---
 
@@ -34,7 +86,26 @@ GCD queues for stdio framing, AppKit on the main thread.
 
 ---
 
-## Xcode Project Setup
+## Building from source
+
+> The rest of this README is for developers. End users only need the
+> "Install" section above — drag-drop the `.mcpb` file and you're done.
+
+Modelled on the [ES UITest](../ES UITest) pattern: accessory app,
+`LSUIElement = YES`, GCD queues for stdio framing, AppKit on the main
+thread.
+
+### Quick start
+
+```sh
+# Build, run tests, and produce ES_Kairos.mcpb
+bash scripts/smoke-test.sh      # build + stdio handshake check (no TCC needed)
+xcodebuild test -project "ES Kairos.xcodeproj" -scheme "ES Kairos" \
+  -destination 'platform=macOS' -derivedDataPath /tmp/kairos-derived
+bash scripts/package-mcpb.sh    # clean release build, packaged as .mcpb
+```
+
+### Xcode Project Setup
 
 1. **New project**: macOS → App, Objective-C, bundle ID `com.elarity.kairos`
 2. **Add all `.h`/`.m` files** from this folder (synchronized folder recommended)

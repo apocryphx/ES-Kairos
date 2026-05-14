@@ -4,8 +4,9 @@ DerivedData/
 *.xcuserdata
 xcuserdata/
 
-# Packaged bundles (regeneratable from scripts/package-mcpb.sh)
-*.mcpb
+# Staged release-app inside bundle/server/ is recreated by every
+# packaging run — don't check it in. The packaged .mcpb at repo root
+# is checked in so end users can grab it without building.
 bundle/server/
 
 # macOS noise
