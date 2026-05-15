@@ -1,4 +1,4 @@
-# ES Kairos
+# ES Kairos MCP server
 
 A macOS MCP server that lets Claude read and write your Calendar,
 Reminders, and Contacts — through Apple's own EventKit and Contacts
