@@ -13,7 +13,7 @@
 
 static NSString *const kProtocolVersion = @"2024-11-05";
 static NSString *const kServerName      = @"kairos";
-static NSString *const kServerVersion   = @"1.0.0";
+static NSString *const kServerVersion   = @"1.1.0";
 
 @interface MCPServer ()
 @property (strong) dispatch_queue_t readQueue;
@@ -868,8 +868,10 @@ static NSString *const kServerVersion   = @"1.0.0";
     },
 
     @{ @"name": @"contact_search",
-       @"description": @"Search contacts by name (partial match against given name, "
-                        @"family name, or organization). "
+       @"description": @"Search contacts by name. Matches the contact's name components "
+                        @"(given name, family name, etc.); multiple words are allowed. "
+                        @"Search is by name only — organization is returned in results "
+                        @"but is not matched. "
                         @"Returns name, phone numbers, email addresses, and organization.",
        @"annotations": @{
            @"title": @"Search Contacts",

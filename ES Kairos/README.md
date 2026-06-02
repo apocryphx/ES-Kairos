@@ -77,7 +77,7 @@ you want a clean slate.
 | `reminders_today` | Reminders due today + overdue (the morning brief) |
 | `reminders_in_range` | Reminders due in a date window, optional list filter |
 | `reminder_search` | Substring search across title and notes |
-| `reminder_create` | Create a new reminder with optional due/priority/notes |
+| `reminder_create` | Create a new reminder with optional due/priority/notes; `#tags` in title/notes become native Reminders tags |
 | `reminder_update` | Update by semantic key (title + list + due) |
 | `reminder_complete` | Mark a reminder completed (reversible) |
 | `reminder_delete` | Delete with native confirmation dialog |

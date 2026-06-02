@@ -34,7 +34,7 @@ LLM never has to handle opaque UUIDs.
 | `reminders_today` | Reminders due today + overdue (morning brief) |
 | `reminders_in_range` | Reminders due in a date window |
 | `reminder_search` | Substring search across title and notes |
-| `reminder_create` | Create with optional due/priority/notes |
+| `reminder_create` | Create with optional due/priority/notes; `#tags` in title/notes become native Reminders tags |
 | `reminder_update` | Update by `(title, list, due)` |
 | `reminder_complete` | Mark completed (reversible) |
 | `reminder_delete` | Delete with native confirmation dialog |
