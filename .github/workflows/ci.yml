@@ -1,0 +1,59 @@
+name: CI
+
+# Build the macOS app and run the deterministic test suites + stdio smoke
+# test on every push and PR. Code signing is disabled (CI has no signing
+# identity); the unsigned binary still runs for the smoke test, and none of
+# the CI tests need it.
+#
+# NOT run here: EKBridgeDuplicateTests (live EventKit — needs Calendar TCC,
+# which can't be granted on a headless runner) and the UI tests. Packaging
+# the .mcpb is a signed release step (scripts/package-mcpb.sh), not CI.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & test
+    # Requires Xcode 26.5+ (the project is objectVersion 100). If the build
+    # fails with an "incompatible project" error, switch to a runner image
+    # that ships Xcode 26 (e.g. macos-26).
+    runs-on: macos-15
+    timeout-minutes: 25
+    env:
+      PROJECT: "ES Kairos.xcodeproj"
+      SCHEME: "ES Kairos"
+      DERIVED: /tmp/kairos-ci-derived
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest installed Xcode
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)/Contents/Developer"
+          xcodebuild -version
+
+      - name: Unit tests (deterministic suites, unsigned)
+        run: |
+          xcodebuild test \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -destination 'platform=macOS' \
+            -derivedDataPath "$DERIVED" \
+            -skip-testing:"ES KairosTests/EKBridgeDuplicateTests" \
+            -skip-testing:"ES KairosUITests" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Smoke test (initialize + tools/list over stdio)
+        env:
+          SMOKE_XCODEBUILD_FLAGS: CODE_SIGNING_ALLOWED=NO
+        run: bash scripts/smoke-test.sh

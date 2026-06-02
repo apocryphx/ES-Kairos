@@ -27,12 +27,16 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 echo "smoke-test: building $APP_NAME (DerivedData=$DERIVED)..."
+# CI (and any machine without a signing identity) can pass extra build
+# settings via SMOKE_XCODEBUILD_FLAGS, e.g. "CODE_SIGNING_ALLOWED=NO".
+# Word-splitting is intentional; leave it unquoted.
 xcodebuild \
     -project "ES Kairos.xcodeproj" \
     -scheme "ES Kairos" \
     -configuration Debug \
     -derivedDataPath "$DERIVED" \
     build \
+    ${SMOKE_XCODEBUILD_FLAGS:-} \
     >/tmp/kairos-build.log 2>&1 || {
     echo "smoke-test: build failed — see /tmp/kairos-build.log" >&2
     tail -40 /tmp/kairos-build.log >&2
