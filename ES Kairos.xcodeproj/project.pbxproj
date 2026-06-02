@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 100;
 	objects = {
 
 /* Begin PBXContainerItemProxy section */
@@ -50,24 +50,18 @@
 /* Begin PBXFrameworksBuildPhase section */
 		15A41F462FB64D8200C18B94 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		15A41F572FB64D8200C18B94 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		15A41F612FB64D8200C18B94 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
@@ -105,14 +99,10 @@
 			);
 			buildRules = (
 			);
-			dependencies = (
-			);
 			fileSystemSynchronizedGroups = (
 				15A41F4B2FB64D8200C18B94 /* ES Kairos */,
 			);
 			name = "ES Kairos";
-			packageProductDependencies = (
-			);
 			productName = "ES Kairos";
 			productReference = 15A41F492FB64D8200C18B94 /* ES_Kairos.app */;
 			productType = "com.apple.product-type.application";
@@ -134,8 +124,6 @@
 				15A41F5D2FB64D8200C18B94 /* ES KairosTests */,
 			);
 			name = "ES KairosTests";
-			packageProductDependencies = (
-			);
 			productName = "ES KairosTests";
 			productReference = 15A41F5A2FB64D8200C18B94 /* ES KairosTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -157,8 +145,6 @@
 				15A41F672FB64D8200C18B94 /* ES KairosUITests */,
 			);
 			name = "ES KairosUITests";
-			packageProductDependencies = (
-			);
 			productName = "ES KairosUITests";
 			productReference = 15A41F642FB64D8200C18B94 /* ES KairosUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -170,6 +156,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
+				CLASSPREFIX = ES;
 				LastUpgradeCheck = 2650;
 				TargetAttributes = {
 					15A41F482FB64D8200C18B94 = {
@@ -194,7 +181,7 @@
 			);
 			mainGroup = 15A41F402FB64D8100C18B94;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
+			preferredProjectObjectVersion = 100;
 			productRefGroup = 15A41F4A2FB64D8200C18B94 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -209,48 +196,36 @@
 /* Begin PBXResourcesBuildPhase section */
 		15A41F472FB64D8200C18B94 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		15A41F582FB64D8200C18B94 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		15A41F622FB64D8200C18B94 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		15A41F452FB64D8200C18B94 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		15A41F562FB64D8200C18B94 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		15A41F602FB64D8200C18B94 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
@@ -268,7 +243,7 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		15A41F6C2FB64D8200C18B94 /* Debug */ = {
+		15A41F6C2FB64D8200C18B94 /* Debug configuration for PBXProject "ES Kairos" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -330,7 +305,7 @@
 			};
 			name = Debug;
 		};
-		15A41F6D2FB64D8200C18B94 /* Release */ = {
+		15A41F6D2FB64D8200C18B94 /* Release configuration for PBXProject "ES Kairos" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -385,7 +360,7 @@
 			};
 			name = Release;
 		};
-		15A41F6F2FB64D8200C18B94 /* Debug */ = {
+		15A41F6F2FB64D8200C18B94 /* Debug configuration for PBXNativeTarget "ES Kairos" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -410,9 +385,9 @@
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Kairos needs calendar access for AI collaboration.";
 				INFOPLIST_KEY_NSContactsUsageDescription = "Kairos needs contacts access for AI collaboration.";
-				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Kairos needs reminders access for AI collaboration.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Kairos needs reminders access for AI collaboration.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -432,7 +407,7 @@
 			};
 			name = Debug;
 		};
-		15A41F702FB64D8200C18B94 /* Release */ = {
+		15A41F702FB64D8200C18B94 /* Release configuration for PBXNativeTarget "ES Kairos" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -457,9 +432,9 @@
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Kairos needs calendar access for AI collaboration.";
 				INFOPLIST_KEY_NSContactsUsageDescription = "Kairos needs contacts access for AI collaboration.";
-				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Kairos needs reminders access for AI collaboration.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Kairos needs reminders access for AI collaboration.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -479,7 +454,7 @@
 			};
 			name = Release;
 		};
-		15A41F722FB64D8200C18B94 /* Debug */ = {
+		15A41F722FB64D8200C18B94 /* Debug configuration for PBXNativeTarget "ES KairosTests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
@@ -501,7 +476,7 @@
 			};
 			name = Debug;
 		};
-		15A41F732FB64D8200C18B94 /* Release */ = {
+		15A41F732FB64D8200C18B94 /* Release configuration for PBXNativeTarget "ES KairosTests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
@@ -523,7 +498,7 @@
 			};
 			name = Release;
 		};
-		15A41F752FB64D8200C18B94 /* Debug */ = {
+		15A41F752FB64D8200C18B94 /* Debug configuration for PBXNativeTarget "ES KairosUITests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
@@ -539,7 +514,7 @@
 			};
 			name = Debug;
 		};
-		15A41F762FB64D8200C18B94 /* Release */ = {
+		15A41F762FB64D8200C18B94 /* Release configuration for PBXNativeTarget "ES KairosUITests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
@@ -561,37 +536,33 @@
 		15A41F442FB64D8100C18B94 /* Build configuration list for PBXProject "ES Kairos" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				15A41F6C2FB64D8200C18B94 /* Debug */,
-				15A41F6D2FB64D8200C18B94 /* Release */,
+				15A41F6C2FB64D8200C18B94 /* Debug configuration for PBXProject "ES Kairos" */,
+				15A41F6D2FB64D8200C18B94 /* Release configuration for PBXProject "ES Kairos" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 		15A41F6E2FB64D8200C18B94 /* Build configuration list for PBXNativeTarget "ES Kairos" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				15A41F6F2FB64D8200C18B94 /* Debug */,
-				15A41F702FB64D8200C18B94 /* Release */,
+				15A41F6F2FB64D8200C18B94 /* Debug configuration for PBXNativeTarget "ES Kairos" */,
+				15A41F702FB64D8200C18B94 /* Release configuration for PBXNativeTarget "ES Kairos" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 		15A41F712FB64D8200C18B94 /* Build configuration list for PBXNativeTarget "ES KairosTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				15A41F722FB64D8200C18B94 /* Debug */,
-				15A41F732FB64D8200C18B94 /* Release */,
+				15A41F722FB64D8200C18B94 /* Debug configuration for PBXNativeTarget "ES KairosTests" */,
+				15A41F732FB64D8200C18B94 /* Release configuration for PBXNativeTarget "ES KairosTests" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 		15A41F742FB64D8200C18B94 /* Build configuration list for PBXNativeTarget "ES KairosUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				15A41F752FB64D8200C18B94 /* Debug */,
-				15A41F762FB64D8200C18B94 /* Release */,
+				15A41F752FB64D8200C18B94 /* Debug configuration for PBXNativeTarget "ES KairosUITests" */,
+				15A41F762FB64D8200C18B94 /* Release configuration for PBXNativeTarget "ES KairosUITests" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
