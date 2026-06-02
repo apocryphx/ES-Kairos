@@ -1009,7 +1009,8 @@ static NSString *const kServerVersion   = @"1.0.0";
     @{ @"name": @"reminder_create",
        @"description": @"Create a new reminder. "
                         @"Use reminder_lists first to confirm the target list name. "
-                        @"priority is 'high', 'medium', 'low', or omitted (none).",
+                        @"priority is 'high', 'medium', 'low', or omitted (none). "
+                        @"#-prefixed words anywhere in the title or notes are automatically converted to native Apple Reminder tags (e.g. #in-progress, #backlog).",
        @"annotations": @{
            @"title": @"Create Reminder",
            @"readOnlyHint":    @NO,
