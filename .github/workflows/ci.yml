@@ -24,10 +24,12 @@ concurrency:
 jobs:
   build-test:
     name: Build & test
-    # Requires Xcode 26.5+ (the project is objectVersion 100). If the build
-    # fails with an "incompatible project" error, switch to a runner image
-    # that ships Xcode 26 (e.g. macos-26).
-    runs-on: macos-15
+    # The project is objectVersion 100 (saved by Xcode 26.5), so the runner
+    # needs Xcode 26.5+. The macos-15 image only ships up to 26.3, which
+    # refuses to open the project ("future Xcode project file format"); the
+    # macos-26 image includes 26.5. The "Select newest installed Xcode" step
+    # below picks 26.5 up.
+    runs-on: macos-26
     timeout-minutes: 25
     env:
       PROJECT: "ES Kairos.xcodeproj"
