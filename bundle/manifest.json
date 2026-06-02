@@ -3,7 +3,7 @@
   "name": "es-kairos",
   "display_name": "ES Kairos",
   "version": "1.0.0",
-  "description": "Native AppKit MCP server for macOS Calendar and Contacts via EventKit. Tools: calendar_list, events_in_range, event_search, event_create, event_update, event_delete, contact_search, ask_user. Confirmation dialog before deletion.",
+  "description": "Native AppKit MCP server for macOS Calendar, Reminders, and Contacts via EventKit. Calendar: calendar_list, events_in_range, event_search, event_create, event_update, event_delete. Reminders: reminder_lists, reminders_today, reminders_in_range, reminder_search, reminder_create, reminder_update, reminder_complete, reminder_delete. Contacts: contact_search. Interactive prompts: ask_user. Shows a confirmation dialog before deletion.",
   "author": { "name": "Kolja Wawrowsky" },
   "server": {
     "type": "binary",
@@ -14,7 +14,7 @@
     }
   },
   "tools_generated": true,
-  "keywords": ["calendar", "contacts", "eventkit", "macos", "scheduling"],
+  "keywords": ["calendar", "reminders", "contacts", "eventkit", "macos", "scheduling"],
   "license": "MIT",
   "compatibility": { "platforms": ["darwin"] }
 }

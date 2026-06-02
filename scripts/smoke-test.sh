@@ -85,22 +85,34 @@ if [ "$NAME" != "kairos" ]; then
     exit 2
 fi
 
+# Derive the expected tool set directly from the toolDefinitions array in
+# MCPServer.m so this check never goes stale as tools are added or removed.
+# Each tool is declared there as:  @{ @"name": @"<tool_name>",
+SRC="$PROJECT_ROOT/ES Kairos/MCPServer.m"
+EXPECTED_NAMES=$(grep -oE '@\{ @"name": @"[a-z_]+"' "$SRC" \
+    | sed -E 's/.*@"([a-z_]+)"$/\1/' | sort || true)
+EXPECTED_COUNT=$(printf '%s\n' "$EXPECTED_NAMES" | grep -c . || true)
+
+if [ "${EXPECTED_COUNT:-0}" -eq 0 ]; then
+    echo "smoke-test: FAIL — could not parse tool names from $SRC" >&2
+    exit 2
+fi
+
 COUNT=$(echo "$LIST" | jq -r '.result.tools | length')
-if [ "$COUNT" != "8" ]; then
-    echo "smoke-test: FAIL — tools/list returned $COUNT tools (expected 8)" >&2
+if [ "$COUNT" != "$EXPECTED_COUNT" ]; then
+    echo "smoke-test: FAIL — tools/list returned $COUNT tools (expected $EXPECTED_COUNT from MCPServer.m)" >&2
     echo "$LIST" | jq '.result.tools | map(.name)' >&2
     exit 2
 fi
 
-# Verify each expected tool name appears
-EXPECTED='calendar_list events_in_range event_search event_create event_update event_delete contact_search ask_user'
+# The advertised set must exactly match what MCPServer.m declares
+# (catches renamed, dropped, or typo'd tools in either direction).
 NAMES=$(echo "$LIST" | jq -r '.result.tools[].name' | sort)
-for t in $EXPECTED; do
-    if ! echo "$NAMES" | grep -qx "$t"; then
-        echo "smoke-test: FAIL — tool '$t' missing from tools/list" >&2
-        echo "got: $NAMES" >&2
-        exit 2
-    fi
-done
+if [ "$NAMES" != "$EXPECTED_NAMES" ]; then
+    echo "smoke-test: FAIL — advertised tools differ from MCPServer.m declarations" >&2
+    echo "  declared:"   >&2; printf '%s\n' "$EXPECTED_NAMES" | sed 's/^/    /' >&2
+    echo "  advertised:" >&2; printf '%s\n' "$NAMES"          | sed 's/^/    /' >&2
+    exit 2
+fi
 
 echo "smoke-test: OK — protocolVersion=$PROTO serverInfo.name=$NAME tools=$COUNT"
