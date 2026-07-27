@@ -67,6 +67,7 @@ you want a clean slate.
 
 | Tool | Description |
 |---|---|
+| `datetime_now` | Current local date & time: ISO 8601 with UTC offset, weekday, IANA timezone |
 | `calendar_list` | All calendars: name, type, source, editable |
 | `events_in_range` | Events in a date window, optional calendar filter |
 | `event_search` | Substring search across title, location, notes |

@@ -13,7 +13,7 @@
 
 static NSString *const kProtocolVersion = @"2024-11-05";
 static NSString *const kServerName      = @"kairos";
-static NSString *const kServerVersion   = @"1.1.0";
+static NSString *const kServerVersion   = @"1.2.0";
 
 @interface MCPServer ()
 @property (strong) dispatch_queue_t readQueue;
@@ -152,7 +152,8 @@ static NSString *const kServerVersion   = @"1.1.0";
 }
 
 - (void)dispatchTool:(NSString *)name args:(NSDictionary *)args rpcId:(id)rpcId {
-    if      ([name isEqualToString:@"calendar_list"])     [self handleCalendarList:args rpcId:rpcId];
+    if      ([name isEqualToString:@"datetime_now"])      [self handleDatetimeNow:args rpcId:rpcId];
+    else if ([name isEqualToString:@"calendar_list"])     [self handleCalendarList:args rpcId:rpcId];
     else if ([name isEqualToString:@"events_in_range"])   [self handleEventsInRange:args rpcId:rpcId];
     else if ([name isEqualToString:@"event_search"])      [self handleEventSearch:args rpcId:rpcId];
     else if ([name isEqualToString:@"event_create"])      [self handleEventCreate:args rpcId:rpcId];
@@ -202,6 +203,32 @@ static NSString *const kServerVersion   = @"1.1.0";
         return NO;
     }
     return YES;
+}
+
+#pragma mark - Tool: datetime_now
+
+- (void)handleDatetimeNow:(NSDictionary *)args rpcId:(id)rpcId {
+    static NSDateFormatter *iso = nil;
+    static NSDateFormatter *weekday = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        iso = [[NSDateFormatter alloc] init];
+        iso.dateFormat = @"yyyy-MM-dd'T'HH:mm:ssZZZZZ";
+        iso.locale     = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+        iso.timeZone   = [NSTimeZone localTimeZone];
+
+        weekday = [[NSDateFormatter alloc] init];
+        weekday.dateFormat = @"EEEE";
+        weekday.locale     = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+        weekday.timeZone   = [NSTimeZone localTimeZone];
+    });
+
+    NSDate *now = [NSDate date];
+    [self resultJSON:@{
+        @"datetime": [iso stringFromDate:now],
+        @"weekday":  [weekday stringFromDate:now],
+        @"timezone": [NSTimeZone localTimeZone].name
+    } forRpcId:rpcId];
 }
 
 #pragma mark - Tool: calendar_list
@@ -687,6 +714,22 @@ static NSString *const kServerVersion   = @"1.1.0";
 
 - (NSArray *)toolDefinitions {
     return @[
+
+    @{ @"name": @"datetime_now",
+       @"description": @"Get the current local date and time on this Mac. "
+                        @"Returns ISO 8601 datetime with UTC offset, weekday name, "
+                        @"and IANA timezone identifier. "
+                        @"Call this to anchor relative dates (today, tomorrow, next week) "
+                        @"before computing ranges for other tools.",
+       @"annotations": @{
+           @"title": @"Current Date & Time",
+           @"readOnlyHint":    @YES,
+           @"destructiveHint": @NO,
+           @"idempotentHint":  @YES,
+           @"openWorldHint":   @NO
+       },
+       @"inputSchema": @{ @"type": @"object", @"properties": @{}, @"required": @[] }
+    },
 
     @{ @"name": @"calendar_list",
        @"description": @"List all calendars available on this Mac. "

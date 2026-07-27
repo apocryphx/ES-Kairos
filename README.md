@@ -24,6 +24,7 @@ LLM never has to handle opaque UUIDs.
 
 | Tool | Description |
 |---|---|
+| `datetime_now` | Current local date & time (ISO 8601, weekday, timezone) |
 | `calendar_list` | All calendars |
 | `events_in_range` | Events in a date window |
 | `event_search` | Substring search across title, location, notes |

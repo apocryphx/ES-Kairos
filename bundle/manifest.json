@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "es-kairos",
   "display_name": "ES Kairos",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Native AppKit MCP server that bridges Claude to macOS Calendar, Reminders, and Contacts through Apple's EventKit and Contacts frameworks — list, search, create, update, complete, and delete, with a native confirmation dialog before any deletion. Runs locally as a signed binary; data never leaves the Mac.",
   "author": { "name": "Kolja Wawrowsky" },
   "server": {

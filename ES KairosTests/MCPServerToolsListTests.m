@@ -23,6 +23,7 @@
 
 - (void)testAllToolsExposed {
     NSArray *expected = @[
+        @"datetime_now",
         @"calendar_list", @"events_in_range", @"event_search",
         @"event_create",  @"event_update",    @"event_delete",
         @"contact_search", @"ask_user",
@@ -50,6 +51,7 @@
 
 - (void)testRequiredFieldsMatchReadmeContract {
     NSDictionary *expectedRequired = @{
+        @"datetime_now":    @[],
         @"calendar_list":   @[],
         @"events_in_range": @[@"start", @"end"],
         @"event_search":    @[@"query"],
@@ -99,6 +101,8 @@
     // away.
     NSDictionary *expectedAnnotations = @{
         // Read-only, safe, no UI side effects.
+        @"datetime_now":    @{ @"readOnlyHint": @YES, @"destructiveHint": @NO,
+                               @"idempotentHint": @YES, @"openWorldHint": @NO },
         @"calendar_list":   @{ @"readOnlyHint": @YES, @"destructiveHint": @NO,
                                @"idempotentHint": @YES, @"openWorldHint": @NO },
         @"events_in_range": @{ @"readOnlyHint": @YES, @"destructiveHint": @NO,
