@@ -29,7 +29,8 @@
         @"contact_search", @"ask_user",
         @"reminder_lists", @"reminders_today", @"reminders_in_range",
         @"reminder_search", @"reminder_create", @"reminder_update",
-        @"reminder_complete", @"reminder_delete"
+        @"reminder_complete", @"reminder_delete",
+        @"mailbox_list", @"mail_list", @"mail_search", @"mail_read"
     ];
     NSArray *names = [[self tools] valueForKey:@"name"];
     XCTAssertEqual(names.count, expected.count);
@@ -68,6 +69,10 @@
         @"reminder_update":   @[@"title", @"list", @"changes"],
         @"reminder_complete": @[@"title", @"list"],
         @"reminder_delete":   @[@"title", @"list"],
+        @"mailbox_list":      @[],
+        @"mail_list":         @[],
+        @"mail_search":       @[@"query"],
+        @"mail_read":         @[@"subject"],
     };
     for (NSString *name in expectedRequired) {
         NSDictionary *t = [self toolNamed:name];
@@ -150,6 +155,17 @@
                                   @"idempotentHint": @YES, @"openWorldHint": @NO },
         // Delete is permanent — mitigated by native NSAlert.
         @"reminder_delete":    @{ @"readOnlyHint": @NO,  @"destructiveHint": @YES,
+                                  @"idempotentHint": @YES, @"openWorldHint": @NO },
+
+        // Mail — phase 1 is read-only by design. openWorldHint stays NO:
+        // the tools talk to the local Mail.app store, not the network.
+        @"mailbox_list":       @{ @"readOnlyHint": @YES, @"destructiveHint": @NO,
+                                  @"idempotentHint": @YES, @"openWorldHint": @NO },
+        @"mail_list":          @{ @"readOnlyHint": @YES, @"destructiveHint": @NO,
+                                  @"idempotentHint": @YES, @"openWorldHint": @NO },
+        @"mail_search":        @{ @"readOnlyHint": @YES, @"destructiveHint": @NO,
+                                  @"idempotentHint": @YES, @"openWorldHint": @NO },
+        @"mail_read":          @{ @"readOnlyHint": @YES, @"destructiveHint": @NO,
                                   @"idempotentHint": @YES, @"openWorldHint": @NO },
     };
     for (NSString *name in expectedAnnotations) {

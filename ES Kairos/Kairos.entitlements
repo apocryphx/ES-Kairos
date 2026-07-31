@@ -15,10 +15,19 @@
 		manually. Unlike contacts, there's no legacy-name vs new-name
 		ambiguity to worry about — personal-information.reminders is
 		simply the canonical macOS key.
+
+		Apple Events (the Mail tools) is the same story: no
+		ENABLE_RESOURCE_ACCESS_APPLE_EVENTS flag exists, so the
+		hardened-runtime entitlement is declared here. The matching
+		usage string is INFOPLIST_KEY_NSAppleEventsUsageDescription in
+		build settings. The Automation prompt fires on the first Apple
+		Event sent to Mail (lazily, from MailBridge), not at launch.
 	-->
 	<key>com.apple.security.app-sandbox</key>
 	<false/>
 	<key>com.apple.security.personal-information.reminders</key>
+	<true/>
+	<key>com.apple.security.automation.apple-events</key>
 	<true/>
 </dict>
 </plist>

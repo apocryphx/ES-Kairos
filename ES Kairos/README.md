@@ -1,11 +1,12 @@
 # Kairos
 
-**STDIO MCP server for calendar, reminders, and contacts on macOS.**
+**STDIO MCP server for calendar, reminders, contacts, and mail on macOS.**
 
-EventKit + Contacts, native AppKit, Objective-C. Events and reminders are
-identified by semantic keys (`title + calendar + start`, `title + list + due`) —
+EventKit + Contacts + Scripting Bridge (Mail), native AppKit, Objective-C.
+Events, reminders, and messages are identified by semantic keys
+(`title + calendar + start`, `title + list + due`, `subject + sender + date`) —
 no UUIDs in the LLM context, so summaries stay reliable. A native macOS
-confirmation dialog appears before any deletion.
+confirmation dialog appears before any deletion. Mail access is read-only.
 
 ---
 
@@ -17,6 +18,8 @@ confirmation dialog appears before any deletion.
    permission prompts appear in sequence — one each for Calendar,
    Contacts, and Reminders. Approve all three. (The chained prompts
    are deliberate; macOS won't show them reliably if asked in parallel.)
+   A fourth prompt — Automation access to Mail — appears later, on the
+   first use of a mail tool, and may launch Mail.app in the background.
 3. Ask Claude things like:
    - *"What's on my calendar today?"*
    - *"What reminders are due today?"*
@@ -35,6 +38,12 @@ confirm before anything happens — Kairos cannot quietly remove your data.
 Updates do not pop a dialog, so Claude's MCP client is expected to
 confirm with you before invoking destructive tools (the tool annotations
 flag this).
+
+The **mail tools are read-only by design** — no send, delete, move, or
+mark-as-read exists in this phase. Reading email does mean untrusted
+content from external senders enters Claude's context; `mail_read`'s
+tool description instructs Claude to treat message bodies strictly as
+data, never as instructions.
 
 ### If a permission prompt doesn't appear
 
@@ -84,6 +93,10 @@ you want a clean slate.
 | `reminder_delete` | Delete with native confirmation dialog |
 | `contact_search` | Search contacts by name |
 | `ask_user` | Native text-input popup |
+| `mailbox_list` | Mail accounts and mailboxes with unread counts |
+| `mail_list` | Recent messages in a mailbox, newest first |
+| `mail_search` | Substring search across subject and sender |
+| `mail_read` | Full message by semantic key (subject + sender + date) |
 
 ---
 
@@ -110,7 +123,10 @@ bash scripts/package-mcpb.sh    # clean release build, packaged as .mcpb
 
 1. **New project**: macOS → App, Objective-C, bundle ID `com.elarity.kairos`
 2. **Add all `.h`/`.m` files** from this folder (synchronized folder recommended)
-3. **Frameworks**: EventKit.framework, Contacts.framework, AppKit.framework
+3. **Frameworks**: EventKit.framework, Contacts.framework, AppKit.framework,
+   ScriptingBridge.framework (all auto-linked via module imports).
+   `Mail.h` is generated, not hand-written — regenerate after macOS updates with
+   `sdef /System/Applications/Mail.app | sdp -fh --basename Mail`
 4. **Info.plist** — add usage strings:
    ```
    NSCalendarsFullAccessUsageDescription  →  "Kairos needs calendar access for AI collaboration."
@@ -152,6 +168,19 @@ window applies to the due date too.
 The dedup `index` field appears when multiple reminders share title + list,
 exactly mirroring the event mechanism.
 
+## Message Identity
+
+Messages are identified by **subject**, narrowed by an optional **sender
+substring** and **received date** (±2 minute window, same as events).
+Exact (case-insensitive, trimmed) subject match is preferred; if nothing
+matches exactly, substring matching is the fallback. When several
+messages still match — newsletters reuse subjects for months —
+`mail_read` returns an `ambiguous` result listing candidates newest-first
+with 1-based `index` fields, and the LLM calls again with `index`.
+
+Mail's `Message-ID` header stays internal: reliable, but exactly the
+kind of opaque identifier Kairos keeps out of the LLM context.
+
 Priorities are exposed as **strings**: `"high"` (EventKit priority 1–4),
 `"medium"` (5), `"low"` (6–9), or omitted (0 = none). The numeric scale is
 an EventKit-internal artifact; the LLM works better with semantic labels.
@@ -184,17 +213,26 @@ behavior.
 | stdout writes | `kairos.mcp.write` (serial) |
 | EKEventStore operations | `kairos.ekbridge` (serial) |
 | CNContactStore operations | `kairos.cnbridge` (serial) |
+| Scripting Bridge / Apple Events to Mail | `kairos.mailbridge` (serial) |
 
-EKEvent and CNContact objects never cross their respective queue boundaries —
-all results are converted to `NSDictionary` before being returned to callers.
+EKEvent, CNContact, and SBObject references never cross their respective
+queue boundaries — all results are converted to `NSDictionary` before
+being returned to callers.
 
 ---
 
 ## Authorization
 
-Access is requested at launch in `AppDelegate`. The system permission dialog
-appears on first run. Tool handlers check `isAuthorized` and return a clear
-error message if the user denied access, directing them to System Settings.
+Calendar, Contacts, and Reminders access is requested at launch in
+`AppDelegate`. The system permission dialogs appear on first run. Tool
+handlers check `isAuthorized` and return a clear error message if the
+user denied access, directing them to System Settings.
+
+Mail is different: the Automation permission is requested **lazily on
+first mail tool use** inside `MailBridge`, never at launch — because the
+request sends an Apple Event, and an Apple Event launches Mail.app.
+Requesting at launch would open Mail every time Claude Desktop starts.
+See dragon N.10.
 
 ---
 
@@ -335,3 +373,58 @@ bundle — `requestAccess` returns `denied` with no dialog.
 `/tmp/kairos-release-derived` path, does a `clean build` (no `test`),
 and aborts if it ever sees `PlugIns/` or `XCTest.framework` inside the
 about-to-be-packaged bundle. Keep that guard.
+
+### N.9 Scripting Bridge: batch or die, and rich text has no string
+
+Two traps in one framework.
+
+**Per-property round trips.** Naively looping over `SBElementArray`
+messages and reading `.subject` sends one Apple Event *per property per
+message* — thousands of round trips on a real mailbox. `MailBridge`
+instead batch-fetches with `arrayByApplyingSelector:` (or `valueForKey:`
+for scalar properties), which sends **one** event per property regardless
+of message count ("get subject of every message of …"). Mail answers
+these from its envelope database without loading message bodies; the
+54k-message unified inbox resolves in a couple of seconds. Never touch
+message properties per-item in a loop.
+
+**Rich text bodies.** A message's `content` is declared as `rich text`,
+which exposes paragraphs/words/characters but no plain-string property.
+The trick is to evaluate the object specifier itself: `[[msg content]
+get]` makes Mail coerce and return the text — at runtime the result is
+an `NSString`. Type-check it anyway; on failure the tool returns
+`"(body unavailable)"` rather than garbage. Coerced HTML mail arrives
+littered with U+FFFC placeholders and NBSPs — `normalizeBody:` strips
+them before the text reaches the LLM.
+
+Batch-fetched arrays may contain `NSNull` for missing values, and the
+parallel property arrays are only index-aligned as of fetch time — the
+`StrAt`/`DateAt`/`BoolAt` helpers sanitize the former, and `mail_read`
+re-verifies the live subject before returning a body to catch the latter.
+
+### N.10 Automation TCC (Apple Events) — a fourth kind of permission
+
+The mail tools need the **Automation** permission (`kTCCServiceAppleEvents`),
+which behaves differently from Calendar/Contacts/Reminders in every way
+that matters:
+
+1. **No resource-access flag.** Xcode 26's resource-access capability has
+   no `ENABLE_RESOURCE_ACCESS_APPLE_EVENTS` (the full list: audio input,
+   bluetooth, calendars, camera, contacts, location, photos, printing,
+   USB). Like reminders, the hardened-runtime entitlement
+   `com.apple.security.automation.apple-events` is declared manually in
+   `Kairos.entitlements`, and the usage string is
+   `INFOPLIST_KEY_NSAppleEventsUsageDescription` in build settings.
+2. **Per-target, prompted on first event.** The permission is granted per
+   *target app* (Mail), and the prompt fires on the first Apple Event
+   sent — not at launch, and `AppDelegate` must not chain it with the
+   other three: sending the event **launches Mail.app**. `MailBridge`
+   settles it lazily via `AEDeterminePermissionToAutomateTarget`
+   (`askUserIfNeeded=YES`) on the first mail tool call, launching Mail in
+   the background (`NSWorkspaceOpenConfiguration.activates = NO`) if it
+   isn't running (`procNotFound`).
+3. **Reset name is different.** `tccutil reset AppleEvents
+   com.elarity.ES-Kairos` — not `Mail`, not `Automation`.
+4. **10 s event timeout.** `SBApplication.timeout` is set to 600 ticks so
+   a hung Mail yields an error instead of deadlocking the work queue —
+   same ceiling philosophy as the reminders semaphore (N.7).
