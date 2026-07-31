@@ -315,8 +315,20 @@ static OSStatus MailAutomationPermission(BOOL askUser) {
 
         NSMutableDictionary *out = [NSMutableDictionary dictionary];
         out[@"accounts"] = accountsOut;
+        // Mail's mailbox-level unreadCount tracks the badge, which only
+        // counts the Primary category when mailbox categorization is on —
+        // it reported 0 while three Promotions-category messages sat
+        // unread (dragon N.12). Per-message readStatus is ground truth;
+        // one batched fetch over the unified inbox (dragon N.9).
         @try {
-            out[@"inbox_unread"] = @(self.mail.inbox.unreadCount);
+            NSArray *reads = [[self.mail.inbox messages]
+                              valueForKey:@"readStatus"] ?: @[];
+            NSUInteger unread = 0;
+            for (id v in reads) {
+                if ([v respondsToSelector:@selector(boolValue)] && ![v boolValue])
+                    unread++;
+            }
+            out[@"inbox_unread"] = @(unread);
         } @catch (NSException *e) { /* cosmetic — omit */ }
         result = [out copy];
     });

@@ -489,3 +489,20 @@ The write tools (v1.4.0) collect several hard-won behaviors:
    queued. The bridge's `sendMessageTo:…` sends unconditionally — the
    dialog in MCPServer is the one and only gate, so never call the
    bridge's send/reply-confirmed paths from new code without it.
+
+### N.12 unreadCount lies under mailbox categorization
+
+Mail's mailbox-level `unreadCount` property tracks the *badge*, and with
+mailbox categorization enabled (macOS Sequoia+) the badge only counts
+the Primary category. Field-verified: the unified inbox reported
+`unreadCount = 0` while three unread Promotions/Updates-category
+messages sat in it with `readStatus = false`. Per-message `readStatus`
+is ground truth.
+
+`mailbox_list` therefore computes `inbox_unread` from a single batched
+`readStatus` fetch over the unified inbox (~1–2 s on a 54k-message
+store, envelope-DB served — dragon N.9). The per-account mailbox counts
+still come from `unreadCount` — batching flags for every mailbox would
+be dozens of extra events for a cosmetic listing — so the tool
+description tells the LLM those may undercount and to trust
+`mail_list unread_only` when it matters.

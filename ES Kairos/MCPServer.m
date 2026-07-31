@@ -15,7 +15,7 @@
 
 static NSString *const kProtocolVersion = @"2024-11-05";
 static NSString *const kServerName      = @"kairos";
-static NSString *const kServerVersion   = @"1.4.0";
+static NSString *const kServerVersion   = @"1.4.1";
 
 @interface MCPServer ()
 @property (strong) dispatch_queue_t readQueue;
@@ -1464,6 +1464,10 @@ static NSArray<NSString *> *StringArrayArg(id v) {
     @{ @"name": @"mailbox_list",
        @"description": @"List Apple Mail accounts and their mailboxes with unread counts, "
                         @"plus the unified inbox unread total. "
+                        @"inbox_unread is counted from per-message read flags and is "
+                        @"authoritative; per-mailbox unread counts come from Mail's badge "
+                        @"and may undercount when mailbox categorization is enabled — "
+                        @"verify with mail_list unread_only when it matters. "
                         @"Call this first to learn mailbox names for the other mail tools. "
                         @"The first mail tool call may launch Mail.app in the background and "
                         @"trigger a one-time macOS Automation permission prompt.",
