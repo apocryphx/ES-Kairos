@@ -2,12 +2,14 @@
 
 A macOS MCP server that lets Claude read and write your Calendar,
 Reminders, and Contacts — through Apple's own EventKit and Contacts
-frameworks — and read your Apple Mail via Scripting Bridge. Every
-deletion pops a native confirmation dialog; identity is semantic
+frameworks — and work with your Apple Mail via Scripting Bridge: read,
+search, mark, file, draft, and (with your explicit approval) send.
+Every deletion pops a native confirmation dialog, and **no email is
+ever sent without a native dialog showing you the full recipients,
+subject, and body first** — sending requires a deliberate mouse click;
+no keyboard shortcut can trigger it. Identity is semantic
 (`title + calendar + start`, `title + list + due`,
 `subject + sender + date`) so the LLM never has to handle opaque UUIDs.
-Mail access is read-only: Claude can list, search, and read messages,
-but nothing in your mailboxes can be modified, sent, or deleted.
 
 ## Install
 
@@ -51,9 +53,14 @@ but nothing in your mailboxes can be modified, sent, or deleted.
 | `contact_search` | Search contacts by name |
 | `ask_user` | Native text-input popup |
 | `mailbox_list` | Mail accounts and mailboxes with unread counts |
-| `mail_list` | Recent messages in a mailbox, newest first (read-only) |
+| `mail_list` | Recent messages in a mailbox, newest first |
 | `mail_search` | Substring search across subject and sender |
 | `mail_read` | Full message by `(subject, sender, date)`; body as plain text |
+| `mail_mark` | Mark a message read or unread (reversible) |
+| `mail_move` | File a message; Trash/Junk targets pop a confirmation dialog |
+| `mail_draft` | Compose into Drafts — never sends; you review in Mail |
+| `mail_send` | Send email — native dialog shows full message first, click-only |
+| `mail_reply` | Reply with threading — same dialog, recipients resolved by Mail |
 
 ## Troubleshooting
 

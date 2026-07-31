@@ -30,7 +30,8 @@
         @"reminder_lists", @"reminders_today", @"reminders_in_range",
         @"reminder_search", @"reminder_create", @"reminder_update",
         @"reminder_complete", @"reminder_delete",
-        @"mailbox_list", @"mail_list", @"mail_search", @"mail_read"
+        @"mailbox_list", @"mail_list", @"mail_search", @"mail_read",
+        @"mail_mark", @"mail_move", @"mail_draft", @"mail_send", @"mail_reply"
     ];
     NSArray *names = [[self tools] valueForKey:@"name"];
     XCTAssertEqual(names.count, expected.count);
@@ -73,6 +74,11 @@
         @"mail_list":         @[],
         @"mail_search":       @[@"query"],
         @"mail_read":         @[@"subject"],
+        @"mail_mark":         @[@"subject", @"read"],
+        @"mail_move":         @[@"subject", @"to_mailbox"],
+        @"mail_draft":        @[@"to", @"subject", @"body"],
+        @"mail_send":         @[@"to", @"subject", @"body"],
+        @"mail_reply":        @[@"subject", @"body"],
     };
     for (NSString *name in expectedRequired) {
         NSDictionary *t = [self toolNamed:name];
@@ -167,6 +173,25 @@
                                   @"idempotentHint": @YES, @"openWorldHint": @NO },
         @"mail_read":          @{ @"readOnlyHint": @YES, @"destructiveHint": @NO,
                                   @"idempotentHint": @YES, @"openWorldHint": @NO },
+
+        // Mail — phase 2 writes.
+        // Mark is a reversible flag flip.
+        @"mail_mark":          @{ @"readOnlyHint": @NO,  @"destructiveHint": @NO,
+                                  @"idempotentHint": @YES, @"openWorldHint": @NO },
+        // Trash/Junk targets are deletion-like; native dialog guards them.
+        @"mail_move":          @{ @"readOnlyHint": @NO,  @"destructiveHint": @YES,
+                                  @"idempotentHint": @YES, @"openWorldHint": @NO },
+        // Additive and local; duplicates on repeat.
+        @"mail_draft":         @{ @"readOnlyHint": @NO,  @"destructiveHint": @NO,
+                                  @"idempotentHint": @NO,  @"openWorldHint": @NO },
+        // Send/reply: not data-destructive but irreversible and
+        // outward-facing — destructiveHint YES so cautious clients confirm
+        // on top of the native full-body dialog. The only openWorldHint
+        // tools in Kairos.
+        @"mail_send":          @{ @"readOnlyHint": @NO,  @"destructiveHint": @YES,
+                                  @"idempotentHint": @NO,  @"openWorldHint": @YES },
+        @"mail_reply":         @{ @"readOnlyHint": @NO,  @"destructiveHint": @YES,
+                                  @"idempotentHint": @NO,  @"openWorldHint": @YES },
     };
     for (NSString *name in expectedAnnotations) {
         NSDictionary *a = [self toolNamed:name][@"annotations"];

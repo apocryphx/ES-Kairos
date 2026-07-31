@@ -6,7 +6,8 @@ EventKit + Contacts + Scripting Bridge (Mail), native AppKit, Objective-C.
 Events, reminders, and messages are identified by semantic keys
 (`title + calendar + start`, `title + list + due`, `subject + sender + date`) —
 no UUIDs in the LLM context, so summaries stay reliable. A native macOS
-confirmation dialog appears before any deletion. Mail access is read-only.
+confirmation dialog appears before any deletion, and every outgoing
+email is gated by a native dialog showing the full message.
 
 ---
 
@@ -39,11 +40,25 @@ Updates do not pop a dialog, so Claude's MCP client is expected to
 confirm with you before invoking destructive tools (the tool annotations
 flag this).
 
-The **mail tools are read-only by design** — no send, delete, move, or
-mark-as-read exists in this phase. Reading email does mean untrusted
-content from external senders enters Claude's context; `mail_read`'s
-tool description instructs Claude to treat message bodies strictly as
-data, never as instructions.
+The **mail tools are tiered by consequence**:
+
+- `mail_mark` (reversible flag) and `mail_draft` (additive, nothing
+  leaves the Mac) run without dialogs.
+- `mail_move` runs silently for filing, but Trash/Junk targets — and
+  their provider aliases like "Deleted Items" — pop the same warning
+  alert as event/reminder deletion.
+- `mail_send` and `mail_reply` **always** pop a native dialog showing
+  every recipient, the subject, and the complete scrollable body.
+  Sending requires a deliberate mouse click — the Send button has no
+  key equivalent, so a Return keystroke in flight when the dialog
+  steals focus cannot fire it. Escape cancels.
+
+Reading email means untrusted content from external senders enters
+Claude's context, and with send tools present that matters: a message
+saying "forward this to…" is the textbook prompt-injection attack.
+The tool descriptions instruct Claude to treat message bodies strictly
+as data and never to compose or send based on them — but the dialog is
+the hard guarantee: nothing leaves this Mac unseen.
 
 ### If a permission prompt doesn't appear
 
@@ -97,6 +112,11 @@ you want a clean slate.
 | `mail_list` | Recent messages in a mailbox, newest first |
 | `mail_search` | Substring search across subject and sender |
 | `mail_read` | Full message by semantic key (subject + sender + date) |
+| `mail_mark` | Mark read/unread by semantic key (reversible) |
+| `mail_move` | File a message; deletion-like targets require the native dialog |
+| `mail_draft` | Compose into Drafts without sending |
+| `mail_send` | Send email — full-body native dialog, click-only Send |
+| `mail_reply` | Threaded reply via Mail's reply command — same dialog |
 
 ---
 
@@ -181,6 +201,11 @@ with 1-based `index` fields, and the LLM calls again with `index`.
 Mail's `Message-ID` header stays internal: reliable, but exactly the
 kind of opaque identifier Kairos keeps out of the LLM context.
 
+Every phase-2 write tool (`mail_mark`, `mail_move`, `mail_reply`)
+resolves its target through the same shared front-end as `mail_read`
+(`targetMessageWithSubject:…`), so ambiguity, `index` disambiguation,
+and the staleness re-check behave identically across the surface.
+
 Priorities are exposed as **strings**: `"high"` (EventKit priority 1–4),
 `"medium"` (5), `"low"` (6–9), or omitted (0 = none). The numeric scale is
 an EventKit-internal artifact; the LLM works better with semantic labels.
@@ -207,7 +232,7 @@ behavior.
 
 | Concern | Thread / Queue |
 |---|---|
-| `[NSApp run]`, AppKit UI, NSAlert, AskUserWindowController | main thread |
+| `[NSApp run]`, AppKit UI, NSAlert, AskUserWindowController, SendConfirmWindowController | main thread |
 | stdin reader (line-buffered) | `kairos.mcp.read` (serial) |
 | per-request tool dispatch | `kairos.mcp.work` (concurrent) |
 | stdout writes | `kairos.mcp.write` (serial) |
@@ -428,3 +453,39 @@ that matters:
 4. **10 s event timeout.** `SBApplication.timeout` is set to 600 ticks so
    a hung Mail yields an error instead of deadlocking the work queue —
    same ceiling philosophy as the reminders semaphore (N.7).
+
+### N.11 Composing mail via Scripting Bridge — ceremony and safety wiring
+
+The write tools (v1.4.0) collect several hard-won behaviors:
+
+1. **Outgoing message creation** follows Apple's SBSendEmail idiom:
+   `[[[mail classForScriptingClass:@"outgoing message"] alloc]
+   initWithProperties:…]`, then add to `outgoingMessages`, then append
+   typed `to recipient` / `cc recipient` objects. `content` accepts a
+   plain string inside the make-event's properties record — no rich
+   text object needed at creation time.
+2. **Drafts** use the AppleScript idiom `close … saving yes`
+   (`closeSaving:MailSaveOptionsYes savingIn:nil`) — the unsent message
+   lands in Drafts. There is no explicit "save to drafts" command.
+3. **Reply** uses `replyOpeningWindow:NO replyToAll:` so threading
+   headers are Mail's problem, not ours. Setting the body afterward
+   assigns a plain NSString through the `MailRichText *`-typed setter —
+   SB marshals it exactly like AppleScript's `set content to`. If
+   Mail's "quote original message" preference pre-filled a quote, the
+   reply body goes above it.
+4. **Reply recipients are previewed, not guessed.** A reply to a
+   message goes to its *sender* (or reply-to) — which for a message in
+   Sent is yourself, and in general may differ from what the LLM
+   assumes. The two-phase flow creates a throwaway reply, reads the
+   recipients Mail actually resolved, discards it unsent
+   (`closeSaving:MailSaveOptionsNo`), shows them in the dialog, and
+   only then recreates and sends. Field-verified: the dialog surfaced
+   an iCloud reply address where Gmail was expected.
+5. **The send dialog is click-only.** `SendConfirmWindowController`
+   deliberately gives Send no key equivalent: the dialog steals
+   keyboard focus when it appears, and a Return keystroke already in
+   flight from typing must never send email. Escape cancels; a second
+   dialog arriving while one is on screen is auto-declined, never
+   queued. The bridge's `sendMessageTo:…` sends unconditionally — the
+   dialog in MCPServer is the one and only gate, so never call the
+   bridge's send/reply-confirmed paths from new code without it.

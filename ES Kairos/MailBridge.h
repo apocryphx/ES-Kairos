@@ -62,6 +62,78 @@ NS_ASSUME_NONNULL_BEGIN
                                  account:(nullable NSString *)accountName
                                    index:(NSInteger)index;
 
+#pragma mark - Write operations (phase 2)
+//
+// All write methods resolve their target message by the same semantic key
+// as readMessage (subject [+ sender substring] [+ date ±2 min], `index`
+// disambiguation) and share its ambiguity/staleness behavior.
+//
+// The native confirmation dialogs live in MCPServer, not here. Methods
+// that sometimes need confirmation are two-phase: called with
+// confirmed:NO they return { needs_confirmation: YES, ... } previews
+// without touching anything; the handler shows the dialog and calls
+// again with confirmed:YES.
+
+/// Set a message's read flag. Reversible and idempotent.
+/// Returns: { marked, read } or { error } / { ambiguous, candidates }.
+- (NSDictionary *)markMessageWithSubject:(NSString *)subject
+                                  sender:(nullable NSString *)sender
+                                    date:(nullable NSDate *)date
+                                 mailbox:(nullable NSString *)mailboxName
+                                 account:(nullable NSString *)accountName
+                                   index:(NSInteger)index
+                                    read:(BOOL)read;
+
+/// Move a message to another mailbox. Deletion-like targets (Trash/Junk
+/// and their provider aliases) require confirmed:YES; the first call
+/// returns { needs_confirmation, target, message } instead of moving.
+/// Returns: { moved, to } on success.
+- (NSDictionary *)moveMessageWithSubject:(NSString *)subject
+                                  sender:(nullable NSString *)sender
+                                    date:(nullable NSDate *)date
+                                 mailbox:(nullable NSString *)mailboxName
+                                 account:(nullable NSString *)accountName
+                                   index:(NSInteger)index
+                               toMailbox:(NSString *)targetName
+                               toAccount:(nullable NSString *)targetAccountName
+                               confirmed:(BOOL)confirmed;
+
+/// Compose a message into Drafts without sending. Additive and local —
+/// nothing leaves the Mac. `from` selects the sending account by one of
+/// its configured email addresses; nil uses Mail's default.
+/// Returns: { drafted, to } or { error }.
+- (NSDictionary *)draftMessageTo:(NSArray<NSString *> *)to
+                              cc:(nullable NSArray<NSString *> *)cc
+                         subject:(NSString *)subject
+                            body:(NSString *)body
+                            from:(nullable NSString *)from;
+
+/// Compose and send a message. The caller (MCPServer) MUST have shown the
+/// native confirmation dialog before invoking this — the bridge sends
+/// unconditionally. Returns: { sent, to } or { error }.
+- (NSDictionary *)sendMessageTo:(NSArray<NSString *> *)to
+                             cc:(nullable NSArray<NSString *> *)cc
+                        subject:(NSString *)subject
+                           body:(NSString *)body
+                           from:(nullable NSString *)from;
+
+/// Reply to a resolved message via Mail's reply command (preserves
+/// threading headers). Two-phase: confirmed:NO resolves, creates a
+/// throwaway reply to read the exact recipients Mail would use, discards
+/// it, and returns { needs_confirmation, reply_subject, recipients }.
+/// confirmed:YES recreates the reply, sets the body (above Mail's quoted
+/// original when the quote preference produces one), and sends.
+/// Returns: { replied, to } on success.
+- (NSDictionary *)replyToMessageWithSubject:(NSString *)subject
+                                     sender:(nullable NSString *)sender
+                                       date:(nullable NSDate *)date
+                                    mailbox:(nullable NSString *)mailboxName
+                                    account:(nullable NSString *)accountName
+                                      index:(NSInteger)index
+                                       body:(NSString *)body
+                                   replyAll:(BOOL)replyAll
+                                  confirmed:(BOOL)confirmed;
+
 @end
 
 NS_ASSUME_NONNULL_END

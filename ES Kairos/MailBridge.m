@@ -422,6 +422,87 @@ static OSStatus MailAutomationPermission(BOOL askUser) {
 
 #pragma mark - Public: mail_read
 
+/// Must be called on self.queue. Shared front-end for mail_read and every
+/// phase-2 write: resolves the mailbox, fetches metadata, resolves exactly
+/// one message by semantic key (ambiguity → candidates dict, `index` picks),
+/// and verifies the proxy is not stale. On any failure returns nil with
+/// *problem set to the error/ambiguous dictionary to hand back as-is.
+- (nullable MailMessage *)targetMessageWithSubject:(NSString *)subject
+                                            sender:(nullable NSString *)sender
+                                              date:(nullable NSDate *)date
+                                           mailbox:(nullable NSString *)mailboxName
+                                           account:(nullable NSString *)accountName
+                                             index:(NSInteger)index
+                                           summary:(NSDictionary *_Nullable *_Nullable)outSummary
+                                           problem:(NSDictionary *_Nullable *_Nonnull)problem {
+    *problem = nil;
+    NSString *err = [self ensureReadyReturningError];
+    if (err) { *problem = ErrDict(@"%@", err); return nil; }
+
+    MailMailbox *box = [self resolveMailboxNamed:mailboxName
+                                         account:accountName error:&err];
+    if (!box) { *problem = ErrDict(@"%@", err); return nil; }
+
+    NSDictionary *meta = [self fetchMetaForMailbox:box];
+    if (!meta) {
+        *problem = ErrDict(@"Could not read mailbox \"%@\"%@%@.",
+                           mailboxName ?: @"inbox",
+                           self.lastEventError ? @": " : @"",
+                           self.lastEventError ?: @"");
+        return nil;
+    }
+
+    NSArray<NSNumber *> *candidates =
+        [self resolveCandidatesInMeta:meta subject:subject
+                               sender:sender date:date];
+
+    if (!candidates.count) {
+        *problem = ErrDict(@"No message matching \"%@\" in \"%@\". "
+                           @"Try mail_search first.",
+                           subject, mailboxName ?: @"inbox");
+        return nil;
+    }
+    if (candidates.count > 1 && index < 1) {
+        NSMutableArray *list = [NSMutableArray array];
+        [candidates enumerateObjectsUsingBlock:^(NSNumber *idx, NSUInteger k, BOOL *stop) {
+            NSMutableDictionary *d = [[self summaryFromMeta:meta
+                                      index:idx.unsignedIntegerValue] mutableCopy];
+            d[@"index"] = @(k + 1);
+            [list addObject:d];
+        }];
+        *problem = @{ @"ambiguous": @YES,
+                      @"message": @"Multiple messages match. Call again with "
+                                  @"the index of the intended one.",
+                      @"candidates": list };
+        return nil;
+    }
+    NSUInteger pick = (candidates.count > 1) ? (NSUInteger)(index - 1) : 0;
+    if (pick >= candidates.count) {
+        *problem = ErrDict(@"index %ld is out of range (1–%lu).",
+                           (long)index, (unsigned long)candidates.count);
+        return nil;
+    }
+
+    NSUInteger msgIdx = candidates[pick].unsignedIntegerValue;
+    MailMessage *msg = [[box messages] objectAtIndex:msgIdx];
+
+    // The mailbox may have changed since the metadata fetch; verify the
+    // proxy still points at the message we resolved.
+    NSString *wanted = [subject stringByTrimmingCharactersInSet:
+                        NSCharacterSet.whitespaceAndNewlineCharacterSet]
+                       .lowercaseString;
+    NSString *liveSubject = @"";
+    @try { liveSubject = msg.subject ?: @""; } @catch (NSException *e) {}
+    if (![liveSubject.lowercaseString containsString:wanted] &&
+        ![wanted containsString:liveSubject.lowercaseString]) {
+        *problem = ErrDict(@"Mailbox changed while resolving; please retry.");
+        return nil;
+    }
+
+    if (outSummary) *outSummary = [self summaryFromMeta:meta index:msgIdx];
+    return msg;
+}
+
 - (NSDictionary *)readMessageWithSubject:(NSString *)subject
                                   sender:(nullable NSString *)sender
                                     date:(nullable NSDate *)date
@@ -432,71 +513,15 @@ static OSStatus MailAutomationPermission(BOOL askUser) {
 
     __block NSDictionary *result;
     dispatch_sync(self.queue, ^{
-        NSString *err = [self ensureReadyReturningError];
-        if (err) { result = ErrDict(@"%@", err); return; }
-
-        MailMailbox *box = [self resolveMailboxNamed:mailboxName
-                                             account:accountName error:&err];
-        if (!box) { result = ErrDict(@"%@", err); return; }
-
-        NSDictionary *meta = [self fetchMetaForMailbox:box];
-        if (!meta) {
-            result = ErrDict(@"Could not read mailbox \"%@\"%@%@.",
-                             mailboxName ?: @"inbox",
-                             self.lastEventError ? @": " : @"",
-                             self.lastEventError ?: @"");
-            return;
-        }
-
-        NSArray<NSNumber *> *candidates =
-            [self resolveCandidatesInMeta:meta subject:subject
-                                   sender:sender date:date];
-
-        if (!candidates.count) {
-            result = ErrDict(@"No message matching \"%@\" in \"%@\". "
-                             @"Try mail_search first.",
-                             subject, mailboxName ?: @"inbox");
-            return;
-        }
-        if (candidates.count > 1 && index < 1) {
-            NSMutableArray *list = [NSMutableArray array];
-            [candidates enumerateObjectsUsingBlock:^(NSNumber *idx, NSUInteger k, BOOL *stop) {
-                NSMutableDictionary *d = [[self summaryFromMeta:meta
-                                          index:idx.unsignedIntegerValue] mutableCopy];
-                d[@"index"] = @(k + 1);
-                [list addObject:d];
-            }];
-            result = @{ @"ambiguous": @YES,
-                        @"message": @"Multiple messages match. Call again with "
-                                    @"the index of the intended one.",
-                        @"candidates": list };
-            return;
-        }
-        NSUInteger pick = (candidates.count > 1) ? (NSUInteger)(index - 1) : 0;
-        if (pick >= candidates.count) {
-            result = ErrDict(@"index %ld is out of range (1–%lu).",
-                             (long)index, (unsigned long)candidates.count);
-            return;
-        }
-
-        NSUInteger msgIdx = candidates[pick].unsignedIntegerValue;
-        MailMessage *msg = [[box messages] objectAtIndex:msgIdx];
-
-        // The mailbox may have changed since the metadata fetch; verify the
-        // proxy still points at the message we resolved.
-        NSString *wanted = [subject stringByTrimmingCharactersInSet:
-                            NSCharacterSet.whitespaceAndNewlineCharacterSet]
-                           .lowercaseString;
-        NSString *liveSubject = @"";
-        @try { liveSubject = msg.subject ?: @""; } @catch (NSException *e) {}
-        if (![liveSubject.lowercaseString containsString:wanted] &&
-            ![wanted containsString:liveSubject.lowercaseString]) {
-            result = ErrDict(@"Mailbox changed while reading; please retry.");
-            return;
-        }
+        NSDictionary *problem = nil, *summary = nil;
+        MailMessage *msg = [self targetMessageWithSubject:subject sender:sender
+                                                     date:date mailbox:mailboxName
+                                                  account:accountName index:index
+                                                  summary:&summary problem:&problem];
+        if (!msg) { result = problem; return; }
 
         result = [self formatFullMessage:msg
-                             withSummary:[self summaryFromMeta:meta index:msgIdx]
+                             withSummary:summary
                              mailboxName:mailboxName.length ? mailboxName : @"inbox"];
     });
     return result;
@@ -619,6 +644,338 @@ static OSStatus MailAutomationPermission(BOOL askUser) {
                                        withTemplate:@"\n\n"];
     return [s stringByTrimmingCharactersInSet:
             NSCharacterSet.whitespaceAndNewlineCharacterSet];
+}
+
+#pragma mark - Write operations (phase 2)
+
+/// Pure — deletion-like move targets require confirmation. Matches the
+/// special names plus the provider-specific server folder names that
+/// appear in mailbox_list output.
++ (BOOL)isDeletionLikeMailboxName:(NSString *)name {
+    static NSSet<NSString *> *names;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        names = [NSSet setWithArray:@[@"trash", @"junk", @"deleted messages",
+                                      @"deleted items", @"junk e-mail",
+                                      @"spam", @"bulk mail"]];
+    });
+    NSString *k = [name stringByTrimmingCharactersInSet:
+                   NSCharacterSet.whitespaceAndNewlineCharacterSet].lowercaseString;
+    return [names containsObject:k];
+}
+
+/// Pure — returns the first address that fails a minimal sanity check
+/// (one @ with non-empty local and domain parts, no whitespace), or nil
+/// if all pass. Real validation is Mail's job; this catches echo mistakes.
++ (nullable NSString *)firstInvalidAddress:(NSArray<NSString *> *)addresses {
+    for (id a in addresses) {
+        if (![a isKindOfClass:[NSString class]]) return [a description];
+        NSArray *parts = [a componentsSeparatedByString:@"@"];
+        if (parts.count != 2 ||
+            [parts[0] length] == 0 || [parts[1] length] == 0 ||
+            [a rangeOfCharacterFromSet:
+             NSCharacterSet.whitespaceAndNewlineCharacterSet].location != NSNotFound)
+            return a;
+    }
+    return nil;
+}
+
+- (NSDictionary *)markMessageWithSubject:(NSString *)subject
+                                  sender:(nullable NSString *)sender
+                                    date:(nullable NSDate *)date
+                                 mailbox:(nullable NSString *)mailboxName
+                                 account:(nullable NSString *)accountName
+                                   index:(NSInteger)index
+                                    read:(BOOL)read {
+    if (!subject.length) return ErrDict(@"subject must not be empty.");
+
+    __block NSDictionary *result;
+    dispatch_sync(self.queue, ^{
+        NSDictionary *problem = nil, *summary = nil;
+        MailMessage *msg = [self targetMessageWithSubject:subject sender:sender
+                                                     date:date mailbox:mailboxName
+                                                  account:accountName index:index
+                                                  summary:&summary problem:&problem];
+        if (!msg) { result = problem; return; }
+
+        @try {
+            msg.readStatus = read;
+        } @catch (NSException *e) {
+            result = ErrDict(@"Could not change read status: %@", e.reason);
+            return;
+        }
+        BOOL now = read;
+        @try { now = msg.readStatus; } @catch (NSException *e) {}
+        result = @{ @"marked": summary[@"subject"] ?: subject, @"read": @(now) };
+    });
+    return result;
+}
+
+- (NSDictionary *)moveMessageWithSubject:(NSString *)subject
+                                  sender:(nullable NSString *)sender
+                                    date:(nullable NSDate *)date
+                                 mailbox:(nullable NSString *)mailboxName
+                                 account:(nullable NSString *)accountName
+                                   index:(NSInteger)index
+                               toMailbox:(NSString *)targetName
+                               toAccount:(nullable NSString *)targetAccountName
+                               confirmed:(BOOL)confirmed {
+    if (!subject.length)    return ErrDict(@"subject must not be empty.");
+    if (!targetName.length) return ErrDict(@"to_mailbox must not be empty.");
+
+    __block NSDictionary *result;
+    dispatch_sync(self.queue, ^{
+        NSString *err = [self ensureReadyReturningError];
+        if (err) { result = ErrDict(@"%@", err); return; }
+
+        MailMailbox *target = [self resolveMailboxNamed:targetName
+                                                account:targetAccountName error:&err];
+        if (!target) { result = ErrDict(@"%@", err); return; }
+
+        NSDictionary *problem = nil, *summary = nil;
+        MailMessage *msg = [self targetMessageWithSubject:subject sender:sender
+                                                     date:date mailbox:mailboxName
+                                                  account:accountName index:index
+                                                  summary:&summary problem:&problem];
+        if (!msg) { result = problem; return; }
+
+        if ([MailBridge isDeletionLikeMailboxName:targetName] && !confirmed) {
+            result = @{ @"needs_confirmation": @YES,
+                        @"target": targetName,
+                        @"message": summary ?: @{} };
+            return;
+        }
+
+        self.lastEventError = nil;
+        @try {
+            [msg moveTo:target];
+        } @catch (NSException *e) {
+            result = ErrDict(@"Move failed: %@", e.reason);
+            return;
+        }
+        if (self.lastEventError) {
+            result = ErrDict(@"Move failed: %@", self.lastEventError);
+            return;
+        }
+        result = @{ @"moved": summary[@"subject"] ?: subject, @"to": targetName };
+    });
+    return result;
+}
+
+/// Must be called on self.queue. Composition core shared by draft and
+/// send — Apple's SBSendEmail idiom: instantiate the scripting class with
+/// properties (content accepts plain text in the make-event's record),
+/// add to outgoingMessages, then append typed recipients.
+- (nullable MailOutgoingMessage *)composeTo:(NSArray<NSString *> *)to
+                                         cc:(nullable NSArray<NSString *> *)cc
+                                    subject:(NSString *)subject
+                                       body:(NSString *)body
+                                       from:(nullable NSString *)from
+                                    problem:(NSDictionary *_Nullable *_Nonnull)problem {
+    *problem = nil;
+    NSArray *all = cc.count ? [to arrayByAddingObjectsFromArray:cc] : to;
+    NSString *bad = [MailBridge firstInvalidAddress:all];
+    if (bad) { *problem = ErrDict(@"Invalid email address: \"%@\"", bad); return nil; }
+
+    self.lastEventError = nil;
+    MailOutgoingMessage *out = nil;
+    @try {
+        out = [[[self.mail classForScriptingClass:@"outgoing message"] alloc]
+               initWithProperties:@{ @"subject": subject ?: @"",
+                                     @"content": body ?: @"",
+                                     @"visible": @NO }];
+        [[self.mail outgoingMessages] addObject:out];
+        if (from.length) out.sender = from;
+
+        for (NSString *addr in to) {
+            MailToRecipient *r =
+                [[[self.mail classForScriptingClass:@"to recipient"] alloc]
+                 initWithProperties:@{ @"address": addr }];
+            [[out toRecipients] addObject:r];
+        }
+        for (NSString *addr in cc ?: @[]) {
+            MailCcRecipient *r =
+                [[[self.mail classForScriptingClass:@"cc recipient"] alloc]
+                 initWithProperties:@{ @"address": addr }];
+            [[out ccRecipients] addObject:r];
+        }
+    } @catch (NSException *e) {
+        *problem = ErrDict(@"Could not compose message: %@", e.reason);
+        return nil;
+    }
+    if (self.lastEventError) {
+        *problem = ErrDict(@"Could not compose message: %@", self.lastEventError);
+        return nil;
+    }
+    return out;
+}
+
+- (NSDictionary *)draftMessageTo:(NSArray<NSString *> *)to
+                              cc:(nullable NSArray<NSString *> *)cc
+                         subject:(NSString *)subject
+                            body:(NSString *)body
+                            from:(nullable NSString *)from {
+    if (!to.count)         return ErrDict(@"to must contain at least one address.");
+    if (!subject.length)   return ErrDict(@"subject must not be empty.");
+
+    __block NSDictionary *result;
+    dispatch_sync(self.queue, ^{
+        NSString *err = [self ensureReadyReturningError];
+        if (err) { result = ErrDict(@"%@", err); return; }
+
+        NSDictionary *problem = nil;
+        MailOutgoingMessage *out = [self composeTo:to cc:cc subject:subject
+                                              body:body from:from problem:&problem];
+        if (!out) { result = problem; return; }
+
+        // AppleScript draft idiom: "close ... saving yes" files the unsent
+        // message in Drafts.
+        self.lastEventError = nil;
+        @try {
+            [out closeSaving:MailSaveOptionsYes savingIn:nil];
+        } @catch (NSException *e) {
+            result = ErrDict(@"Could not save draft: %@", e.reason);
+            return;
+        }
+        if (self.lastEventError) {
+            result = ErrDict(@"Could not save draft: %@", self.lastEventError);
+            return;
+        }
+        result = @{ @"drafted": subject, @"to": to,
+                    @"note": @"Saved to Drafts — review and send from Mail." };
+    });
+    return result;
+}
+
+- (NSDictionary *)sendMessageTo:(NSArray<NSString *> *)to
+                             cc:(nullable NSArray<NSString *> *)cc
+                        subject:(NSString *)subject
+                           body:(NSString *)body
+                           from:(nullable NSString *)from {
+    if (!to.count)       return ErrDict(@"to must contain at least one address.");
+    if (!subject.length) return ErrDict(@"subject must not be empty.");
+
+    __block NSDictionary *result;
+    dispatch_sync(self.queue, ^{
+        NSString *err = [self ensureReadyReturningError];
+        if (err) { result = ErrDict(@"%@", err); return; }
+
+        NSDictionary *problem = nil;
+        MailOutgoingMessage *out = [self composeTo:to cc:cc subject:subject
+                                              body:body from:from problem:&problem];
+        if (!out) { result = problem; return; }
+
+        self.lastEventError = nil;
+        BOOL ok = NO;
+        @try {
+            ok = [out send];
+        } @catch (NSException *e) {
+            result = ErrDict(@"Send failed: %@", e.reason);
+            return;
+        }
+        if (!ok || self.lastEventError) {
+            result = ErrDict(@"Send failed%@%@.",
+                             self.lastEventError ? @": " : @"",
+                             self.lastEventError ?: @"");
+            return;
+        }
+        NSMutableDictionary *d = [NSMutableDictionary dictionary];
+        d[@"sent"] = subject;
+        d[@"to"] = to;
+        if (cc.count) d[@"cc"] = cc;
+        result = [d copy];
+    });
+    return result;
+}
+
+- (NSDictionary *)replyToMessageWithSubject:(NSString *)subject
+                                     sender:(nullable NSString *)sender
+                                       date:(nullable NSDate *)date
+                                    mailbox:(nullable NSString *)mailboxName
+                                    account:(nullable NSString *)accountName
+                                      index:(NSInteger)index
+                                       body:(NSString *)body
+                                   replyAll:(BOOL)replyAll
+                                  confirmed:(BOOL)confirmed {
+    if (!subject.length) return ErrDict(@"subject must not be empty.");
+    if (!body.length)    return ErrDict(@"body must not be empty.");
+
+    __block NSDictionary *result;
+    dispatch_sync(self.queue, ^{
+        NSDictionary *problem = nil, *summary = nil;
+        MailMessage *msg = [self targetMessageWithSubject:subject sender:sender
+                                                     date:date mailbox:mailboxName
+                                                  account:accountName index:index
+                                                  summary:&summary problem:&problem];
+        if (!msg) { result = problem; return; }
+
+        self.lastEventError = nil;
+        MailOutgoingMessage *reply = nil;
+        @try {
+            reply = [msg replyOpeningWindow:NO replyToAll:replyAll];
+        } @catch (NSException *e) {}
+        if (!reply || self.lastEventError) {
+            result = ErrDict(@"Could not create reply%@%@.",
+                             self.lastEventError ? @": " : @"",
+                             self.lastEventError ?: @"");
+            return;
+        }
+
+        // Recipients as Mail actually resolved them (to + cc combined).
+        NSArray *recipients = @[];
+        NSString *replySubject = @"";
+        @try {
+            recipients = [[reply recipients]
+                          arrayByApplyingSelector:@selector(address)] ?: @[];
+            replySubject = reply.subject ?: @"";
+        } @catch (NSException *e) {}
+
+        if (!confirmed) {
+            // Preview phase: discard the throwaway reply unsent.
+            @try { [reply closeSaving:MailSaveOptionsNo savingIn:nil]; }
+            @catch (NSException *e) {}
+            result = @{ @"needs_confirmation": @YES,
+                        @"reply_subject": replySubject,
+                        @"recipients": recipients,
+                        @"message": summary ?: @{} };
+            return;
+        }
+
+        // Mail may have pre-filled the body with the quoted original
+        // (depends on the "quote original message" preference). Put our
+        // text above it; otherwise the body stands alone.
+        NSString *quote = nil;
+        @try {
+            id q = [[reply content] get];
+            if ([q isKindOfClass:[NSString class]] && [q length]) quote = q;
+        } @catch (NSException *e) {}
+        NSString *full = quote
+            ? [NSString stringWithFormat:@"%@\n\n%@", body, quote] : body;
+        @try {
+            // Setter is typed MailRichText*, but SB marshals a plain string
+            // into the set-data event exactly as AppleScript's
+            // "set content to" does (dragon N.11).
+            reply.content = (MailRichText *)full;
+        } @catch (NSException *e) {
+            result = ErrDict(@"Could not set reply body: %@", e.reason);
+            return;
+        }
+
+        self.lastEventError = nil;
+        BOOL ok = NO;
+        @try {
+            ok = [reply send];
+        } @catch (NSException *e) {}
+        if (!ok || self.lastEventError) {
+            result = ErrDict(@"Reply send failed%@%@.",
+                             self.lastEventError ? @": " : @"",
+                             self.lastEventError ?: @"");
+            return;
+        }
+        result = @{ @"replied": summary[@"subject"] ?: subject,
+                    @"to": recipients };
+    });
+    return result;
 }
 
 #pragma mark - Dates

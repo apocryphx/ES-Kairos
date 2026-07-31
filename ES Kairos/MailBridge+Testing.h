@@ -23,6 +23,13 @@ NS_ASSUME_NONNULL_BEGIN
 /// Pure — strips U+FFFC placeholders and NBSPs, collapses blank-line runs.
 + (NSString *)normalizeBody:(NSString *)body;
 
+/// Pure — YES for move targets that behave like deletion (Trash/Junk and
+/// their provider aliases); these require the native confirmation dialog.
++ (BOOL)isDeletionLikeMailboxName:(NSString *)name;
+
+/// Pure — first address failing the minimal sanity check, or nil.
++ (nullable NSString *)firstInvalidAddress:(NSArray<NSString *> *)addresses;
+
 /// Pure — message indices of `meta`, newest first (missing dates last).
 - (NSArray<NSNumber *> *)indicesByDateDescending:(NSDictionary *)meta;
 

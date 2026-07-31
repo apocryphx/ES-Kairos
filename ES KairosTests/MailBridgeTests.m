@@ -155,4 +155,32 @@ static NSDate *D(NSTimeInterval secondsAgo) {
     XCTAssertEqualObjects([MailBridge normalizeBody:plain], plain);
 }
 
+#pragma mark - Write-tool pure helpers (phase 2)
+
+- (void)testDeletionLikeMailboxNames {
+    for (NSString *n in @[@"Trash", @"junk", @"Deleted Messages",
+                          @"deleted items", @"Junk E-mail", @"SPAM",
+                          @" Bulk Mail "]) {
+        XCTAssertTrue([MailBridge isDeletionLikeMailboxName:n], @"%@", n);
+    }
+    for (NSString *n in @[@"Archive", @"INBOX", @"Receipts & Invoices",
+                          @"Junk Drawer", @"Trashy Novels"]) {
+        XCTAssertFalse([MailBridge isDeletionLikeMailboxName:n], @"%@", n);
+    }
+}
+
+- (void)testFirstInvalidAddressAcceptsPlausibleAddresses {
+    XCTAssertNil(([MailBridge firstInvalidAddress:
+                   @[@"a@b.com", @"first.last@sub.example.co.uk"]]));
+    XCTAssertNil([MailBridge firstInvalidAddress:@[]]);
+}
+
+- (void)testFirstInvalidAddressCatchesEchoMistakes {
+    XCTAssertEqualObjects(([MailBridge firstInvalidAddress:@[@"a@b.com", @"nope"]]), @"nope");
+    XCTAssertEqualObjects([MailBridge firstInvalidAddress:@[@"a b@c.com"]], @"a b@c.com");
+    XCTAssertEqualObjects([MailBridge firstInvalidAddress:@[@"@x.com"]], @"@x.com");
+    XCTAssertEqualObjects([MailBridge firstInvalidAddress:@[@"a@"]], @"a@");
+    XCTAssertEqualObjects([MailBridge firstInvalidAddress:@[@"a@b@c"]], @"a@b@c");
+}
+
 @end
