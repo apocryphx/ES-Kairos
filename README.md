@@ -3,7 +3,8 @@
 A macOS MCP server that lets Claude read and write your Calendar,
 Reminders, and Contacts — through Apple's own EventKit and Contacts
 frameworks — and work with your Apple Mail via Scripting Bridge: read,
-search, mark, file, draft, and (with your explicit approval) send.
+search, mark, flag, file, save attachments, draft, and (with your
+explicit approval) send, reply, and forward.
 Every deletion pops a native confirmation dialog, and **no email is
 ever sent without a native dialog showing you the full recipients,
 subject, and body first** — sending requires a deliberate mouse click;
@@ -56,11 +57,13 @@ no keyboard shortcut can trigger it. Identity is semantic
 | `mail_list` | Recent messages in a mailbox, newest first |
 | `mail_search` | Substring search across subject and sender |
 | `mail_read` | Full message by `(subject, sender, date)`; body as plain text |
-| `mail_mark` | Mark a message read or unread (reversible) |
+| `mail_mark` | Mark a message read/unread and/or flagged (reversible) |
 | `mail_move` | File a message; Trash/Junk targets pop a confirmation dialog |
 | `mail_draft` | Compose into Drafts — never sends; you review in Mail |
 | `mail_send` | Send email — native dialog shows full message first, click-only |
 | `mail_reply` | Reply with threading — same dialog, recipients resolved by Mail |
+| `mail_forward` | Forward with original text and attachments included — same dialog |
+| `mail_attachment_save` | Save an attachment to ~/Downloads/Kairos Attachments/ (quarantined, never overwrites) |
 
 ## Troubleshooting
 

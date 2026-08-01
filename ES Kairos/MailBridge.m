@@ -607,19 +607,11 @@ static OSStatus MailAutomationPermission(BOOL askUser) {
                 e.reason.UTF8String ?: "(unknown)");
     }
 
-    // `content` is declared as rich text, which has no string property in
-    // the scripting model. Evaluating the reference with -get makes Mail
-    // return the coerced text — at runtime this is an NSString (dragon N.9).
-    NSString *body = nil;
-    @try {
-        id raw = [[msg content] get];
-        if ([raw isKindOfClass:[NSString class]]) body = raw;
-    } @catch (NSException *e) {}
+    NSString *body = [self plainBodyOfMessage:msg];
     if (!body) {
         d[@"body"] = @"(body unavailable)";
         return [d copy];
     }
-    body = [MailBridge normalizeBody:body];
     if (body.length > kBodyMaxChars) {
         NSRange safe = [body rangeOfComposedCharacterSequenceAtIndex:kBodyMaxChars];
         d[@"body"] = [body substringToIndex:safe.location];
@@ -698,8 +690,10 @@ static OSStatus MailAutomationPermission(BOOL askUser) {
                                  mailbox:(nullable NSString *)mailboxName
                                  account:(nullable NSString *)accountName
                                    index:(NSInteger)index
-                                    read:(BOOL)read {
-    if (!subject.length) return ErrDict(@"subject must not be empty.");
+                                    read:(nullable NSNumber *)read
+                                 flagged:(nullable NSNumber *)flagged {
+    if (!subject.length)   return ErrDict(@"subject must not be empty.");
+    if (!read && !flagged) return ErrDict(@"Provide read and/or flagged.");
 
     __block NSDictionary *result;
     dispatch_sync(self.queue, ^{
@@ -711,14 +705,25 @@ static OSStatus MailAutomationPermission(BOOL askUser) {
         if (!msg) { result = problem; return; }
 
         @try {
-            msg.readStatus = read;
+            if (read)    msg.readStatus    = read.boolValue;
+            if (flagged) msg.flaggedStatus = flagged.boolValue;
         } @catch (NSException *e) {
-            result = ErrDict(@"Could not change read status: %@", e.reason);
+            result = ErrDict(@"Could not change message status: %@", e.reason);
             return;
         }
-        BOOL now = read;
-        @try { now = msg.readStatus; } @catch (NSException *e) {}
-        result = @{ @"marked": summary[@"subject"] ?: subject, @"read": @(now) };
+        NSMutableDictionary *d =
+            [@{ @"marked": summary[@"subject"] ?: subject } mutableCopy];
+        if (read) {
+            BOOL now = read.boolValue;
+            @try { now = msg.readStatus; } @catch (NSException *e) {}
+            d[@"read"] = @(now);
+        }
+        if (flagged) {
+            BOOL now = flagged.boolValue;
+            @try { now = msg.flaggedStatus; } @catch (NSException *e) {}
+            d[@"flagged"] = @(now);
+        }
+        result = [d copy];
     });
     return result;
 }
@@ -774,6 +779,58 @@ static OSStatus MailAutomationPermission(BOOL askUser) {
     return result;
 }
 
+/// Must be called on self.queue. `content` is declared as rich text with
+/// no string property; evaluating the reference with -get makes Mail
+/// return the coerced text — at runtime an NSString (dragon N.9).
+/// Returns the normalized plain body, or nil if unavailable.
+- (nullable NSString *)plainBodyOfMessage:(MailMessage *)msg {
+    NSString *body = nil;
+    @try {
+        id raw = [[msg content] get];
+        if ([raw isKindOfClass:[NSString class]]) body = raw;
+    } @catch (NSException *e) {}
+    return body ? [MailBridge normalizeBody:body] : nil;
+}
+
+/// Must be called on self.queue. Prepends the body text to a reply or
+/// forward WITHOUT touching the rest of the message. Assigning to the
+/// `content` property looks right but silently DESTROYS the outgoing
+/// message's content (dragon N.11) — field-verified: replies and forwards
+/// arrived empty. AppleScript's "make new paragraph at beginning of
+/// content with data" is the working mechanism; in SB that's
+/// initWithData: + insertObject:atIndex:0.
+- (BOOL)insertBody:(NSString *)body atTopOf:(MailOutgoingMessage *)out {
+    self.lastEventError = nil;
+    @try {
+        MailParagraph *p =
+            [[[self.mail classForScriptingClass:@"paragraph"] alloc]
+             initWithData:[body stringByAppendingString:@"\n\n"]];
+        [[[out content] paragraphs] insertObject:p atIndex:0];
+    } @catch (NSException *e) {
+        return NO;
+    }
+    return self.lastEventError == nil;
+}
+
+/// Must be called on self.queue. Appends typed recipient objects to an
+/// outgoing message — shared by compose (draft/send) and forward.
+- (void)addRecipientsTo:(NSArray<NSString *> *)to
+                     cc:(nullable NSArray<NSString *> *)cc
+              toMessage:(MailOutgoingMessage *)out {
+    for (NSString *addr in to) {
+        MailToRecipient *r =
+            [[[self.mail classForScriptingClass:@"to recipient"] alloc]
+             initWithProperties:@{ @"address": addr }];
+        [[out toRecipients] addObject:r];
+    }
+    for (NSString *addr in cc ?: @[]) {
+        MailCcRecipient *r =
+            [[[self.mail classForScriptingClass:@"cc recipient"] alloc]
+             initWithProperties:@{ @"address": addr }];
+        [[out ccRecipients] addObject:r];
+    }
+}
+
 /// Must be called on self.queue. Composition core shared by draft and
 /// send — Apple's SBSendEmail idiom: instantiate the scripting class with
 /// properties (content accepts plain text in the make-event's record),
@@ -798,19 +855,7 @@ static OSStatus MailAutomationPermission(BOOL askUser) {
                                      @"visible": @NO }];
         [[self.mail outgoingMessages] addObject:out];
         if (from.length) out.sender = from;
-
-        for (NSString *addr in to) {
-            MailToRecipient *r =
-                [[[self.mail classForScriptingClass:@"to recipient"] alloc]
-                 initWithProperties:@{ @"address": addr }];
-            [[out toRecipients] addObject:r];
-        }
-        for (NSString *addr in cc ?: @[]) {
-            MailCcRecipient *r =
-                [[[self.mail classForScriptingClass:@"cc recipient"] alloc]
-                 initWithProperties:@{ @"address": addr }];
-            [[out ccRecipients] addObject:r];
-        }
+        [self addRecipientsTo:to cc:cc toMessage:out];
     } @catch (NSException *e) {
         *problem = ErrDict(@"Could not compose message: %@", e.reason);
         return nil;
@@ -953,23 +998,8 @@ static OSStatus MailAutomationPermission(BOOL askUser) {
             return;
         }
 
-        // Mail may have pre-filled the body with the quoted original
-        // (depends on the "quote original message" preference). Put our
-        // text above it; otherwise the body stands alone.
-        NSString *quote = nil;
-        @try {
-            id q = [[reply content] get];
-            if ([q isKindOfClass:[NSString class]] && [q length]) quote = q;
-        } @catch (NSException *e) {}
-        NSString *full = quote
-            ? [NSString stringWithFormat:@"%@\n\n%@", body, quote] : body;
-        @try {
-            // Setter is typed MailRichText*, but SB marshals a plain string
-            // into the set-data event exactly as AppleScript's
-            // "set content to" does (dragon N.11).
-            reply.content = (MailRichText *)full;
-        } @catch (NSException *e) {
-            result = ErrDict(@"Could not set reply body: %@", e.reason);
+        if (![self insertBody:body atTopOf:reply]) {
+            result = ErrDict(@"Could not set reply body.");
             return;
         }
 
@@ -986,6 +1016,315 @@ static OSStatus MailAutomationPermission(BOOL askUser) {
         }
         result = @{ @"replied": summary[@"subject"] ?: subject,
                     @"to": recipients };
+    });
+    return result;
+}
+
+- (NSDictionary *)forwardMessageWithSubject:(NSString *)subject
+                                     sender:(nullable NSString *)sender
+                                       date:(nullable NSDate *)date
+                                    mailbox:(nullable NSString *)mailboxName
+                                    account:(nullable NSString *)accountName
+                                      index:(NSInteger)index
+                                         to:(NSArray<NSString *> *)to
+                                         cc:(nullable NSArray<NSString *> *)cc
+                                       body:(NSString *)body
+                                  confirmed:(BOOL)confirmed {
+    if (!subject.length) return ErrDict(@"subject must not be empty.");
+    if (!body.length)    return ErrDict(@"body must not be empty.");
+    if (!to.count)       return ErrDict(@"to must contain at least one address.");
+    NSArray *all = cc.count ? [to arrayByAddingObjectsFromArray:cc] : to;
+    NSString *bad = [MailBridge firstInvalidAddress:all];
+    if (bad) return ErrDict(@"Invalid email address: \"%@\"", bad);
+
+    __block NSDictionary *result;
+    dispatch_sync(self.queue, ^{
+        NSDictionary *problem = nil, *summary = nil;
+        MailMessage *msg = [self targetMessageWithSubject:subject sender:sender
+                                                     date:date mailbox:mailboxName
+                                                  account:accountName index:index
+                                                  summary:&summary problem:&problem];
+        if (!msg) { result = problem; return; }
+
+        self.lastEventError = nil;
+        MailOutgoingMessage *fwd = nil;
+        @try {
+            fwd = [msg forwardOpeningWindow:NO];
+        } @catch (NSException *e) {}
+        if (!fwd || self.lastEventError) {
+            result = ErrDict(@"Could not create forward%@%@.",
+                             self.lastEventError ? @": " : @"",
+                             self.lastEventError ?: @"");
+            return;
+        }
+        NSString *fwdSubject = @"";
+        @try { fwdSubject = fwd.subject ?: @""; } @catch (NSException *e) {}
+
+        // Windowless scripted forwards send ONLY what scripting puts into
+        // them — Mail's compose-window preview content never materializes
+        // in the delivered mail (dragon N.11). Kairos therefore builds the
+        // full-fidelity forward itself: note, header block, original body,
+        // re-attached files.
+        NSArray *attNames = @[];
+        @try {
+            attNames = [[msg mailAttachments]
+                        arrayByApplyingSelector:@selector(name)] ?: @[];
+        } @catch (NSException *e) {}
+
+        if (!confirmed) {
+            @try { [fwd closeSaving:MailSaveOptionsNo savingIn:nil]; }
+            @catch (NSException *e) {}
+            result = @{ @"needs_confirmation": @YES,
+                        @"forward_subject": fwdSubject,
+                        @"attachment_count": @(attNames.count),
+                        @"message": summary ?: @{} };
+            return;
+        }
+
+        @try {
+            [self addRecipientsTo:to cc:cc toMessage:fwd];
+        } @catch (NSException *e) {
+            result = ErrDict(@"Could not add recipients: %@", e.reason);
+            return;
+        }
+
+        NSMutableString *block = [NSMutableString stringWithString:body];
+        [block appendString:@"\n\n---------- Forwarded message ----------\n"];
+        [block appendFormat:@"From: %@\n", summary[@"from"] ?: @"(unknown)"];
+        [block appendFormat:@"Date: %@\n", summary[@"date"] ?: @"(unknown)"];
+        [block appendFormat:@"Subject: %@\n", summary[@"subject"] ?: subject];
+        NSString *origBody = [self plainBodyOfMessage:msg];
+        [block appendFormat:@"\n%@", origBody ?: @"(original body unavailable)"];
+
+        if (![self insertBody:block atTopOf:fwd]) {
+            result = ErrDict(@"Could not set forward body.");
+            return;
+        }
+
+        // Re-attach the original's files: export each to a temp folder,
+        // then attach by file URL (the make-new-attachment idiom). The
+        // temp files are left for the system to reap — Mail may still
+        // read them asynchronously while transmitting.
+        NSMutableArray *included = [NSMutableArray array];
+        NSMutableArray *skipped  = [NSMutableArray array];
+        if (attNames.count) {
+            NSString *tmpDir = [NSTemporaryDirectory() stringByAppendingPathComponent:
+                [NSString stringWithFormat:@"kairos-fwd-%@", NSUUID.UUID.UUIDString]];
+            [[NSFileManager defaultManager] createDirectoryAtPath:tmpDir
+                                      withIntermediateDirectories:YES
+                                                       attributes:nil error:nil];
+            for (NSUInteger i = 0; i < attNames.count; i++) {
+                NSString *name = StrAt(attNames, i);
+                // One subdirectory per attachment so the delivered file
+                // keeps its exact original name, even when two attachments
+                // share one.
+                NSString *attDir = [tmpDir stringByAppendingPathComponent:
+                    [NSString stringWithFormat:@"%lu", (unsigned long)i]];
+                [[NSFileManager defaultManager] createDirectoryAtPath:attDir
+                                          withIntermediateDirectories:YES
+                                                           attributes:nil error:nil];
+                NSString *tmpPath = [attDir stringByAppendingPathComponent:
+                                     [MailBridge safeFilename:name]];
+                BOOL ok = NO;
+                @try {
+                    MailMailAttachment *src = [[msg mailAttachments] objectAtIndex:i];
+                    [src saveIn:[NSURL fileURLWithPath:tmpPath]
+                             as:MailSaveableFileFormatNativeFormat];
+                    ok = [[NSFileManager defaultManager] fileExistsAtPath:tmpPath];
+                } @catch (NSException *e) {}
+                if (ok) {
+                    @try {
+                        MailAttachment *att =
+                            [[[self.mail classForScriptingClass:@"attachment"] alloc]
+                             initWithProperties:@{ @"fileName":
+                                 [NSURL fileURLWithPath:tmpPath] }];
+                        [[[fwd content] attachments] addObject:att];
+                        [included addObject:name];
+                    } @catch (NSException *e) { ok = NO; }
+                }
+                if (!ok) [skipped addObject:name];
+            }
+        }
+
+        self.lastEventError = nil;
+        BOOL ok = NO;
+        @try {
+            ok = [fwd send];
+        } @catch (NSException *e) {}
+        if (!ok || self.lastEventError) {
+            result = ErrDict(@"Forward send failed%@%@.",
+                             self.lastEventError ? @": " : @"",
+                             self.lastEventError ?: @"");
+            return;
+        }
+        NSMutableDictionary *d = [NSMutableDictionary dictionary];
+        d[@"forwarded"] = summary[@"subject"] ?: subject;
+        d[@"to"] = to;
+        if (cc.count) d[@"cc"] = cc;
+        if (included.count) d[@"attachments_included"] = included;
+        if (skipped.count)  d[@"attachments_skipped"]  = skipped;
+        result = [d copy];
+    });
+    return result;
+}
+
+#pragma mark - Attachments
+
+static NSString *const kAttachmentDir = @"~/Downloads/Kairos Attachments";
+
+/// Pure — a filename that cannot escape the attachment folder or hide
+/// itself: path separators and colons become dashes, leading dots are
+/// stripped, empty collapses to "attachment".
++ (NSString *)safeFilename:(NSString *)name {
+    NSString *n = [name stringByReplacingOccurrencesOfString:@"/" withString:@"-"];
+    n = [n stringByReplacingOccurrencesOfString:@":" withString:@"-"];
+    n = [n stringByTrimmingCharactersInSet:
+         NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    while ([n hasPrefix:@"."]) n = [n substringFromIndex:1];
+    return n.length ? n : @"attachment";
+}
+
+/// Pure — never overwrite: "report.pdf" → "report (2).pdf" until free.
++ (NSString *)collisionFreeName:(NSString *)name
+                       existing:(NSSet<NSString *> *)existing {
+    if (![existing containsObject:name]) return name;
+    NSString *stem = [name stringByDeletingPathExtension];
+    NSString *ext  = [name pathExtension];
+    for (NSUInteger i = 2; i < 1000; i++) {
+        NSString *cand = ext.length
+            ? [NSString stringWithFormat:@"%@ (%lu).%@", stem, (unsigned long)i, ext]
+            : [NSString stringWithFormat:@"%@ (%lu)", stem, (unsigned long)i];
+        if (![existing containsObject:cand]) return cand;
+    }
+    return [NSString stringWithFormat:@"%@-%@", NSUUID.UUID.UUIDString, name];
+}
+
+- (NSDictionary *)saveAttachmentNamed:(nullable NSString *)attachmentName
+               fromMessageWithSubject:(NSString *)subject
+                               sender:(nullable NSString *)sender
+                                 date:(nullable NSDate *)date
+                              mailbox:(nullable NSString *)mailboxName
+                              account:(nullable NSString *)accountName
+                                index:(NSInteger)index {
+    if (!subject.length) return ErrDict(@"subject must not be empty.");
+
+    __block NSDictionary *result;
+    dispatch_sync(self.queue, ^{
+        NSDictionary *problem = nil, *summary = nil;
+        MailMessage *msg = [self targetMessageWithSubject:subject sender:sender
+                                                     date:date mailbox:mailboxName
+                                                  account:accountName index:index
+                                                  summary:&summary problem:&problem];
+        if (!msg) { result = problem; return; }
+
+        NSArray *names = @[], *sizes = @[], *mimes = @[], *downloaded = @[];
+        @try {
+            SBElementArray<MailMailAttachment *> *atts = [msg mailAttachments];
+            names      = [atts arrayByApplyingSelector:@selector(name)] ?: @[];
+            sizes      = [atts valueForKey:@"fileSize"] ?: @[];
+            mimes      = [atts arrayByApplyingSelector:@selector(MIMEType)] ?: @[];
+            downloaded = [atts valueForKey:@"downloaded"] ?: @[];
+        } @catch (NSException *e) {
+            result = ErrDict(@"Could not list attachments: %@", e.reason);
+            return;
+        }
+        if (!names.count) {
+            result = ErrDict(@"\"%@\" has no attachments.",
+                             summary[@"subject"] ?: subject);
+            return;
+        }
+
+        NSInteger match = -1;
+        if (attachmentName.length) {
+            for (NSUInteger i = 0; i < names.count; i++) {
+                if ([StrAt(names, i) caseInsensitiveCompare:attachmentName]
+                    == NSOrderedSame) { match = (NSInteger)i; break; }
+            }
+        }
+        if (match < 0) {
+            NSMutableArray *list = [NSMutableArray array];
+            for (NSUInteger i = 0; i < names.count; i++) {
+                NSMutableDictionary *a = [NSMutableDictionary dictionary];
+                a[@"name"] = StrAt(names, i);
+                if (i < sizes.count &&
+                    [sizes[i] respondsToSelector:@selector(integerValue)])
+                    a[@"bytes"] = sizes[i];
+                NSString *mime = StrAt(mimes, i);
+                if (mime.length) a[@"mime"] = mime;
+                [list addObject:a];
+            }
+            result = @{ @"message": attachmentName.length
+                            ? @"No attachment with that exact name. Available:"
+                            : @"Specify `attachment` by name. Available:",
+                        @"attachments": list };
+            return;
+        }
+
+        // downloaded == explicit NO blocks the save; missing/unknown → try.
+        id dl = (NSUInteger)match < downloaded.count ? downloaded[match] : nil;
+        if ([dl respondsToSelector:@selector(boolValue)] && ![dl boolValue]) {
+            result = ErrDict(@"Attachment \"%@\" has not been downloaded yet — "
+                             @"open the message in Mail to fetch it, then retry.",
+                             StrAt(names, match));
+            return;
+        }
+
+        NSString *dir = [kAttachmentDir stringByExpandingTildeInPath];
+        NSError *ferr = nil;
+        if (![[NSFileManager defaultManager] createDirectoryAtPath:dir
+                                       withIntermediateDirectories:YES
+                                                        attributes:nil
+                                                             error:&ferr]) {
+            result = ErrDict(@"Could not create %@: %@", dir,
+                             ferr.localizedDescription);
+            return;
+        }
+        NSArray *present = [[NSFileManager defaultManager]
+                            contentsOfDirectoryAtPath:dir error:nil] ?: @[];
+        NSString *fname = [MailBridge collisionFreeName:
+                           [MailBridge safeFilename:StrAt(names, match)]
+                                               existing:[NSSet setWithArray:present]];
+        NSString *path = [dir stringByAppendingPathComponent:fname];
+
+        self.lastEventError = nil;
+        @try {
+            MailMailAttachment *att = [[msg mailAttachments] objectAtIndex:match];
+            [att saveIn:[NSURL fileURLWithPath:path]
+                     as:MailSaveableFileFormatNativeFormat];
+        } @catch (NSException *e) {
+            result = ErrDict(@"Save failed: %@", e.reason);
+            return;
+        }
+        if (self.lastEventError) {
+            result = ErrDict(@"Save failed: %@", self.lastEventError);
+            return;
+        }
+        NSDictionary *attrs = [[NSFileManager defaultManager]
+                               attributesOfItemAtPath:path error:nil];
+        if (!attrs) {
+            result = ErrDict(@"Mail reported success but no file appeared at %@.",
+                             path);
+            return;
+        }
+
+        // Quarantine: an attachment from an untrusted sender must not skip
+        // the Gatekeeper treatment a browser download gets.
+        NSError *qerr = nil;
+        NSURL *url = [NSURL fileURLWithPath:path];
+        NSDictionary *q = @{
+            (__bridge NSString *)kLSQuarantineTypeKey:
+                (__bridge NSString *)kLSQuarantineTypeEmailAttachment,
+            (__bridge NSString *)kLSQuarantineAgentNameKey: @"ES Kairos"
+        };
+        if (![url setResourceValue:q
+                            forKey:NSURLQuarantinePropertiesKey error:&qerr]) {
+            fprintf(stderr, "[Kairos] quarantine xattr failed: %s\n",
+                    qerr.localizedDescription.UTF8String ?: "(unknown)");
+        }
+
+        result = @{ @"saved": StrAt(names, match),
+                    @"path": path,
+                    @"bytes": attrs[NSFileSize] ?: @0 };
     });
     return result;
 }

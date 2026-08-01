@@ -42,16 +42,20 @@ flag this).
 
 The **mail tools are tiered by consequence**:
 
-- `mail_mark` (reversible flag) and `mail_draft` (additive, nothing
-  leaves the Mac) run without dialogs.
+- `mail_mark` (reversible read/flagged toggles) and `mail_draft`
+  (additive, nothing leaves the Mac) run without dialogs.
+- `mail_attachment_save` writes only into `~/Downloads/Kairos
+  Attachments/`, never overwrites, and quarantines every saved file so
+  Gatekeeper treats it as a download. No dialog.
 - `mail_move` runs silently for filing, but Trash/Junk targets — and
   their provider aliases like "Deleted Items" — pop the same warning
   alert as event/reminder deletion.
-- `mail_send` and `mail_reply` **always** pop a native dialog showing
-  every recipient, the subject, and the complete scrollable body.
-  Sending requires a deliberate mouse click — the Send button has no
-  key equivalent, so a Return keystroke in flight when the dialog
-  steals focus cannot fire it. Escape cancels.
+- `mail_send`, `mail_reply`, and `mail_forward` **always** pop a native
+  dialog showing every recipient, the subject, and the complete
+  scrollable body (forwards also declare what Kairos appends below the
+  note). Sending requires a deliberate mouse click — the Send button
+  has no key equivalent, so a Return keystroke in flight when the
+  dialog steals focus cannot fire it. Escape cancels.
 
 Reading email means untrusted content from external senders enters
 Claude's context, and with send tools present that matters: a message
@@ -112,11 +116,13 @@ you want a clean slate.
 | `mail_list` | Recent messages in a mailbox, newest first |
 | `mail_search` | Substring search across subject and sender |
 | `mail_read` | Full message by semantic key (subject + sender + date) |
-| `mail_mark` | Mark read/unread by semantic key (reversible) |
+| `mail_mark` | Mark read/unread and/or flagged/unflagged (reversible) |
 | `mail_move` | File a message; deletion-like targets require the native dialog |
 | `mail_draft` | Compose into Drafts without sending |
 | `mail_send` | Send email — full-body native dialog, click-only Send |
 | `mail_reply` | Threaded reply via Mail's reply command — same dialog |
+| `mail_forward` | Full-fidelity forward: note + original text + re-attached files — same dialog |
+| `mail_attachment_save` | Save an attachment to ~/Downloads/Kairos Attachments/, quarantined |
 
 ---
 
@@ -467,12 +473,19 @@ The write tools (v1.4.0) collect several hard-won behaviors:
 2. **Drafts** use the AppleScript idiom `close … saving yes`
    (`closeSaving:MailSaveOptionsYes savingIn:nil`) — the unsent message
    lands in Drafts. There is no explicit "save to drafts" command.
-3. **Reply** uses `replyOpeningWindow:NO replyToAll:` so threading
-   headers are Mail's problem, not ours. Setting the body afterward
-   assigns a plain NSString through the `MailRichText *`-typed setter —
-   SB marshals it exactly like AppleScript's `set content to`. If
-   Mail's "quote original message" preference pre-filled a quote, the
-   reply body goes above it.
+3. **NEVER assign to `content` after creation — it silently destroys
+   the message.** `reply.content = (MailRichText *)string` compiles,
+   raises nothing, reports no event error, and the mail arrives EMPTY.
+   This shipped as a v1.4.x regression (every mail_reply body was lost)
+   and survived verification because we checked arrival, not delivered
+   content — always read the delivered body back. The working
+   mechanism is AppleScript's `make new paragraph at beginning of
+   content with data`, in SB: `initWithData:` + `insertObject:atIndex:0`
+   on the content's paragraphs (`insertBody:atTopOf:`). The
+   make-record path (point 1) is unaffected — content in the creation
+   properties works.
+   One consequence: a windowless scripted reply carries no quoted
+   original — your text stands alone, threading headers intact.
 4. **Reply recipients are previewed, not guessed.** A reply to a
    message goes to its *sender* (or reply-to) — which for a message in
    Sent is yourself, and in general may differ from what the LLM
@@ -489,6 +502,15 @@ The write tools (v1.4.0) collect several hard-won behaviors:
    queued. The bridge's `sendMessageTo:…` sends unconditionally — the
    dialog in MCPServer is the one and only gate, so never call the
    bridge's send/reply-confirmed paths from new code without it.
+6. **Forwards are rebuilt, not trusted.** A windowless scripted forward
+   sends ONLY what scripting inserts — the compose-window preview
+   (original text, attachment) never materializes in the delivered
+   mail; the untouched `content` even reads back empty. mail_forward
+   therefore constructs full fidelity itself: the note, a
+   "Forwarded message" header block, the original's plain body (via
+   the phase-1 reader), and the original's files re-exported to a temp
+   folder and re-attached (N.13). The dialog appends a factual line
+   declaring exactly that.
 
 ### N.12 unreadCount lies under mailbox categorization
 
@@ -506,3 +528,25 @@ still come from `unreadCount` — batching flags for every mailbox would
 be dozens of extra events for a cosmetic listing — so the tool
 description tells the LLM those may undercount and to trust
 `mail_list unread_only` when it matters.
+
+### N.13 Attachment round-trips
+
+Both directions verified in the field (v1.5.0):
+
+- **Export** (`mail_attachment_save` and forward re-attachment): the
+  generic `saveIn:as:MailSaveableFileFormatNativeFormat` on a
+  `mail attachment` writes the file — exact bytes, valid content.
+  Check the `downloaded` property first; an un-fetched attachment
+  can't be exported. Saved files get the
+  `kLSQuarantineTypeEmailAttachment` quarantine xattr — an attachment
+  from an untrusted sender must not skip the Gatekeeper treatment a
+  browser download gets.
+- **Attach** (forward): `[[[mail classForScriptingClass:@"attachment"]
+  alloc] initWithProperties:@{ @"fileName": fileURL }]` added to the
+  outgoing content's `attachments` element array — the
+  make-new-attachment idiom. Use one temp subdirectory per attachment
+  so the delivered file keeps its exact original name; a name prefix
+  in the temp path leaks into what the recipient sees
+  (field-verified: "0-Huntigton membership.pdf"). Temp files are left
+  for the system to reap — Mail may still read them asynchronously
+  during transmission.

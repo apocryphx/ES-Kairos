@@ -31,7 +31,8 @@
         @"reminder_search", @"reminder_create", @"reminder_update",
         @"reminder_complete", @"reminder_delete",
         @"mailbox_list", @"mail_list", @"mail_search", @"mail_read",
-        @"mail_mark", @"mail_move", @"mail_draft", @"mail_send", @"mail_reply"
+        @"mail_mark", @"mail_move", @"mail_draft", @"mail_send", @"mail_reply",
+        @"mail_forward", @"mail_attachment_save"
     ];
     NSArray *names = [[self tools] valueForKey:@"name"];
     XCTAssertEqual(names.count, expected.count);
@@ -74,11 +75,15 @@
         @"mail_list":         @[],
         @"mail_search":       @[@"query"],
         @"mail_read":         @[@"subject"],
-        @"mail_mark":         @[@"subject", @"read"],
+        // mail_mark requires only subject — "at least one of read/flagged"
+        // is a handler-enforced rule JSON Schema `required` can't express.
+        @"mail_mark":         @[@"subject"],
         @"mail_move":         @[@"subject", @"to_mailbox"],
         @"mail_draft":        @[@"to", @"subject", @"body"],
         @"mail_send":         @[@"to", @"subject", @"body"],
         @"mail_reply":        @[@"subject", @"body"],
+        @"mail_forward":      @[@"subject", @"to", @"body"],
+        @"mail_attachment_save": @[@"subject"],
     };
     for (NSString *name in expectedRequired) {
         NSDictionary *t = [self toolNamed:name];
@@ -192,6 +197,13 @@
                                   @"idempotentHint": @NO,  @"openWorldHint": @YES },
         @"mail_reply":         @{ @"readOnlyHint": @NO,  @"destructiveHint": @YES,
                                   @"idempotentHint": @NO,  @"openWorldHint": @YES },
+        // Forward joins send/reply in the outward-facing tier.
+        @"mail_forward":       @{ @"readOnlyHint": @NO,  @"destructiveHint": @YES,
+                                  @"idempotentHint": @NO,  @"openWorldHint": @YES },
+        // Writes to disk additively (never overwrites); repeats create
+        // "(2)"-suffixed copies.
+        @"mail_attachment_save": @{ @"readOnlyHint": @NO, @"destructiveHint": @NO,
+                                    @"idempotentHint": @NO, @"openWorldHint": @NO },
     };
     for (NSString *name in expectedAnnotations) {
         NSDictionary *a = [self toolNamed:name][@"annotations"];

@@ -183,4 +183,43 @@ static NSDate *D(NSTimeInterval secondsAgo) {
     XCTAssertEqualObjects([MailBridge firstInvalidAddress:@[@"a@b@c"]], @"a@b@c");
 }
 
+#pragma mark - Attachment filename helpers (phase 3)
+
+- (void)testSafeFilenameStripsPathSeparators {
+    // Separators become dashes first, then leading dots are stripped —
+    // a traversal-shaped name ends up with neither.
+    XCTAssertEqualObjects([MailBridge safeFilename:@"../../etc/passwd"],
+                          @"-..-etc-passwd");
+    XCTAssertEqualObjects([MailBridge safeFilename:@"a/b:c.pdf"], @"a-b-c.pdf");
+}
+
+- (void)testSafeFilenameStripsLeadingDotsAndWhitespace {
+    XCTAssertEqualObjects([MailBridge safeFilename:@"  .hidden.txt "], @"hidden.txt");
+    XCTAssertEqualObjects([MailBridge safeFilename:@"..."], @"attachment");
+    XCTAssertEqualObjects([MailBridge safeFilename:@""], @"attachment");
+}
+
+- (void)testSafeFilenameLeavesNormalNamesAlone {
+    XCTAssertEqualObjects([MailBridge safeFilename:@"Q3 Report (final).pdf"],
+                          @"Q3 Report (final).pdf");
+}
+
+- (void)testCollisionFreeNameNoCollision {
+    XCTAssertEqualObjects(([MailBridge collisionFreeName:@"a.pdf"
+                                                existing:[NSSet setWithObject:@"b.pdf"]]),
+                          @"a.pdf");
+}
+
+- (void)testCollisionFreeNameSuffixesUntilFree {
+    NSSet *taken = [NSSet setWithArray:@[@"report.pdf", @"report (2).pdf"]];
+    XCTAssertEqualObjects(([MailBridge collisionFreeName:@"report.pdf" existing:taken]),
+                          @"report (3).pdf");
+}
+
+- (void)testCollisionFreeNameHandlesNoExtension {
+    NSSet *taken = [NSSet setWithObject:@"README"];
+    XCTAssertEqualObjects(([MailBridge collisionFreeName:@"README" existing:taken]),
+                          @"README (2)");
+}
+
 @end

@@ -74,15 +74,17 @@ NS_ASSUME_NONNULL_BEGIN
 // without touching anything; the handler shows the dialog and calls
 // again with confirmed:YES.
 
-/// Set a message's read flag. Reversible and idempotent.
-/// Returns: { marked, read } or { error } / { ambiguous, candidates }.
+/// Set a message's read and/or flagged status. Pass nil to leave a flag
+/// untouched; at least one must be non-nil. Reversible and idempotent.
+/// Returns: { marked, read?, flagged? } or { error } / { ambiguous, candidates }.
 - (NSDictionary *)markMessageWithSubject:(NSString *)subject
                                   sender:(nullable NSString *)sender
                                     date:(nullable NSDate *)date
                                  mailbox:(nullable NSString *)mailboxName
                                  account:(nullable NSString *)accountName
                                    index:(NSInteger)index
-                                    read:(BOOL)read;
+                                    read:(nullable NSNumber *)read
+                                 flagged:(nullable NSNumber *)flagged;
 
 /// Move a message to another mailbox. Deletion-like targets (Trash/Junk
 /// and their provider aliases) require confirmed:YES; the first call
@@ -133,6 +135,36 @@ NS_ASSUME_NONNULL_BEGIN
                                        body:(NSString *)body
                                    replyAll:(BOOL)replyAll
                                   confirmed:(BOOL)confirmed;
+
+/// Forward a resolved message via Mail's forward command (the original
+/// content rides below the supplied body, like reply quoting). Recipients
+/// are caller-supplied, never inferred. Two-phase like reply: confirmed:NO
+/// returns { needs_confirmation, forward_subject, message } without
+/// sending. Returns: { forwarded, to } on success.
+- (NSDictionary *)forwardMessageWithSubject:(NSString *)subject
+                                     sender:(nullable NSString *)sender
+                                       date:(nullable NSDate *)date
+                                    mailbox:(nullable NSString *)mailboxName
+                                    account:(nullable NSString *)accountName
+                                      index:(NSInteger)index
+                                         to:(NSArray<NSString *> *)to
+                                         cc:(nullable NSArray<NSString *> *)cc
+                                       body:(NSString *)body
+                                  confirmed:(BOOL)confirmed;
+
+/// Save one attachment of a resolved message to ~/Downloads/Kairos
+/// Attachments/ — sanitized filename, collisions auto-suffixed, never
+/// overwrites, quarantine xattr set so Gatekeeper treats the file as a
+/// download. attachmentName nil (or no exact match) returns the
+/// attachment list instead of saving.
+/// Returns: { saved, path, bytes } / { attachments: [...] } / { error }.
+- (NSDictionary *)saveAttachmentNamed:(nullable NSString *)attachmentName
+               fromMessageWithSubject:(NSString *)subject
+                               sender:(nullable NSString *)sender
+                                 date:(nullable NSDate *)date
+                              mailbox:(nullable NSString *)mailboxName
+                              account:(nullable NSString *)accountName
+                                index:(NSInteger)index;
 
 @end
 

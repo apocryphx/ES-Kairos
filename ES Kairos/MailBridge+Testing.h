@@ -30,6 +30,13 @@ NS_ASSUME_NONNULL_BEGIN
 /// Pure — first address failing the minimal sanity check, or nil.
 + (nullable NSString *)firstInvalidAddress:(NSArray<NSString *> *)addresses;
 
+/// Pure — attachment filename that cannot escape the save folder or hide.
++ (NSString *)safeFilename:(NSString *)name;
+
+/// Pure — "report.pdf" → "report (2).pdf" until absent from `existing`.
++ (NSString *)collisionFreeName:(NSString *)name
+                       existing:(NSSet<NSString *> *)existing;
+
 /// Pure — message indices of `meta`, newest first (missing dates last).
 - (NSArray<NSNumber *> *)indicesByDateDescending:(NSDictionary *)meta;
 

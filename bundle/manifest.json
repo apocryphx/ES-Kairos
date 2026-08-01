@@ -2,8 +2,8 @@
   "manifest_version": "0.3",
   "name": "es-kairos",
   "display_name": "ES Kairos",
-  "version": "1.4.1",
-  "description": "Native AppKit MCP server that bridges Claude to macOS Calendar, Reminders, Contacts, and Apple Mail — list, search, create, update, complete, and delete through Apple's EventKit and Contacts frameworks, plus Mail access via Scripting Bridge: read, search, draft, file, and send. Deletions and every outgoing email are gated by native confirmation dialogs — sending shows the full recipients, subject, and body before anything leaves the Mac.",
+  "version": "1.5.0",
+  "description": "Native AppKit MCP server that bridges Claude to macOS Calendar, Reminders, Contacts, and Apple Mail — list, search, create, update, complete, and delete through Apple's EventKit and Contacts frameworks, plus Mail access via Scripting Bridge: read, search, flag, file, save attachments, draft, send, reply, and forward. Deletions and every outgoing email are gated by native confirmation dialogs — sending shows the full recipients, subject, and body before anything leaves the Mac.",
   "author": { "name": "Kolja Wawrowsky" },
   "server": {
     "type": "binary",
